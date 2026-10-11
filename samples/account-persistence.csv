@@ -1,0 +1,3 @@
+Level,Date and Time,Source,Event ID,Task Category,User,Computer,Keywords,Message
+Information,2026-10-11 11:00:00,Microsoft-Windows-Security-Auditing,4720,User Account Management,NORTHWIND\itadmin,DC-01,Audit Success,"A user account was created. Target Account Name: temp-maint; Subject Account Name: itadmin"
+Information,2026-10-11 11:04:00,Microsoft-Windows-Security-Auditing,4732,Security Group Management,NORTHWIND\itadmin,DC-01,Audit Success,"A member was added to a security-enabled local group. Member Account Name: temp-maint; Group Name: Administrators; Subject Account Name: itadmin"
