@@ -1,3 +1,5 @@
+[**Open the live demo →**](https://namitesh07.github.io/windows-security-event-log-triage-tool/)
+
 # Windows Security Event Log Triage Tool
 
 A browser-based learning project that helps students inspect exported Windows Security events and practice a SOC-style investigation workflow. It uses transparent rules and event correlation to point out activity worth reviewing. It does not claim to detect compromise.
