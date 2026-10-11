@@ -1,94 +1,107 @@
-[**Open the live demo →**](https://namitesh07.github.io/windows-security-event-log-triage-tool/)
-
 # Windows Security Event Log Triage Tool
 
-A browser-based learning project that helps students inspect exported Windows Security events and practice a SOC-style investigation workflow. It uses transparent rules and event correlation to point out activity worth reviewing. It does not claim to detect compromise.
+### Turn exported event data into evidence you can investigate.
 
-## Run locally
+Explore Windows authentication, account, privilege, and persistence activity with an explainable SOC-style workflow — right in your browser.
 
-1. Download or copy this project folder to your Windows computer.
-2. Open `index.html` in a current version of Edge, Chrome, Firefox, or another modern browser.
-3. Load one of the demo scenarios, or choose a Windows Event Viewer CSV file.
-4. Select **Analyse events** to create the report.
+[**Open the live demo →**](https://namitesh07.github.io/windows-security-event-log-triage-tool/)
 
-Nothing needs to be installed. The page works as a static site and can also be hosted on a static web host. The sample buttons use demo records embedded in the page so they work from a local `file://` path; equivalent CSV files are in `samples/`.
+![Browser-based](https://img.shields.io/badge/Analysis-Browser--based-168a72?style=for-the-badge)
+![No uploads](https://img.shields.io/badge/Event%20data-No%20uploads-5b6472?style=for-the-badge)
 
-## What Windows event logs and SOC triage mean
+A privacy-first, educational triage tool — not a verdict that a system is compromised.
 
-Windows records system and security activity as events. Security events can describe logons, account changes, process starts, and other actions. A SOC analyst triages events by identifying what happened, checking the affected account and system, looking for related activity, and deciding what needs more evidence or escalation.
+[**Try the demo**](https://namitesh07.github.io/windows-security-event-log-triage-tool/) · [**How it works**](#how-to-use-it) · [**Privacy**](#privacy-by-design) · [**Limitations**](#know-the-limits)
 
-One event rarely tells the whole story. The findings in this project are investigation prompts, not verdicts.
+## The idea
 
-## Collect a CSV export
+Windows event logs contain valuable investigation clues, but a single Event ID rarely tells the whole story. This project helps students and early-career analysts **spot, group, and understand activity worth reviewing** using visible rules and dataset-level correlation.
 
-1. Open **Event Viewer** and select **Windows Logs → Security**.
-2. Filter or select the event range you want to study.
-3. Use **Save All Events As…** and choose CSV if your Windows version provides that option. If it does not, use the available export option that produces a comma-separated file, then confirm the first row has an Event ID column.
-4. Upload the CSV in the tool.
+Analysis happens entirely in the browser. The tool does not upload the selected CSV, contact a server, query a threat-intelligence feed, or claim to determine attacker intent.
 
-CSV exports vary across Windows versions and locales. The parser accepts common header variants (for example, `Event ID`, `EventID`, `event_id`) and supports quoted fields, commas, and newlines inside quoted messages. An Event ID column is required. Date parsing depends on the browser recognizing the exported date format.
+## What it can inspect
 
-Version 1 does not parse raw `.evtx` files.
-
-## Supported Event IDs
-
-| Event ID | Meaning | Default handling |
-| --- | --- | --- |
-| 4624 | Successful logon | Context; not an alert by itself |
-| 4625 | Failed logon | Counted by account; repeated failures can produce a finding |
-| 4688 | Process created | Context, including process fields when present |
-| 4720 | User account created | Medium-priority review cue |
-| 4726 | User account deleted | Low-priority review cue |
-| 4728 | Member added to global security group | Medium or higher if a privileged group is identified |
-| 4732 | Member added to local security group | Medium or higher if a privileged group is identified |
-| 1102 | Security audit log cleared | High-priority review cue |
-| 4104 | PowerShell script block logged | Context; obvious encoded/obfuscated patterns are highlighted for review |
-| 7045 | Windows service installed | Review cue for a potentially persistent service |
-
-## Detection and correlation rules
-
-- **Repeated failed logons:** by account, with a configurable threshold (default 5). This count spans the uploaded dataset; the tool does not require a time window because export timestamp formats are not consistent enough to promise reliable time-window analysis.
-- **Failed logons followed by success:** when repeated failures for the same account are followed by a successful logon in the records, the events form a higher-priority finding.
-- **Account created, then added to a group:** Event 4720 followed by 4728 or 4732 involving the same target account creates a combined finding.
-- **Security log cleared:** Event 1102 always creates a high-priority finding.
-- **Administrative / Privilege Activity:** multiple account, group, service, or audit-log changes appear in one summary. This is a dataset-level grouping only; the tool does not claim unrelated users or events are correlated.
-- **Other events:** account deletion, group changes, service installation, and selected PowerShell obfuscation cues receive explainable review notes.
-
-Severity labels mean investigative priority, not certainty. The optional score is a small explainable prioritisation aid, not a probability that an event is malicious.
-
-## Demo datasets
-
-| File | Expected learning outcome |
+| Area | Checks and evidence |
 | --- | --- |
-| `samples/normal-windows-events.csv` | Ordinary logons, process creation, and account cleanup without high-priority alerts |
-| `samples/password-guessing.csv` | Repeated 4625 failures followed by a 4624 success |
-| `samples/account-persistence.csv` | New account followed by addition to local Administrators |
-| `samples/suspicious-admin-activity.csv` | Authentication sequence, account/group changes, log clearing, and service installation |
+| Authentication activity | Successful logons (4624), repeated failed logons (4625), and failure-to-success patterns for the same account |
+| Account and group changes | New accounts (4720), deleted accounts (4726), and additions to global or local security groups (4728 / 4732) |
+| Process, script, and service activity | Process creation (4688), PowerShell script-block records (4104), and service installation (7045) when those fields are present |
+| Defence impairment | Security audit log clearance (1102), which always creates a high-priority review cue |
+| Context | Available account, host, source-IP, workstation, process, command-line, timestamp, and event-message details |
+| Learning scenarios | Four fictional CSV datasets: normal activity, password guessing, account persistence, and suspicious administrative activity |
 
-All demo names and hosts are fictional. Example IPv4 addresses use documentation ranges reserved for examples.
+### Built to make the reasoning visible
 
-## Privacy and security design
+- **Explainable findings:** every alert is tied to an Event ID, rule, count, or event sequence that can be reviewed.
+- **Configurable authentication threshold:** the repeated-failed-logon threshold starts at **5** and can be adjusted for the current analysis.
+- **Careful correlation:** the tool can connect failed logons followed by success, and new-account creation followed by group addition, when the uploaded records provide matching evidence.
+- **Transparent scope:** correlations are limited to the uploaded dataset; the tool does not claim unrelated people or events are connected.
+- **CSV guardrails:** common Event ID header names are accepted, quoted fields are supported, and a missing Event ID column produces a clear error instead of a crash.
+- **Local practice cases:** all demo names and hosts are fictional; example IP addresses use documentation ranges reserved for examples.
 
-- File reading and analysis happen in the browser using the local File API.
-- No backend, AI service, external API, analytics, cookies, tracking, or telemetry is used.
-- The page makes no network requests; fonts and styling use local system fonts.
-- Uploaded data is held in the current page's memory and is not intentionally persisted.
-- CSV values are rendered as text after escaping; the app does not insert event values as executable HTML.
-- Malformed CSV and missing required columns produce a visible error instead of an analysis crash.
+## How to use it
 
-Only analyse logs from systems you own or are authorised to investigate.
+1. Open the [live demo](https://namitesh07.github.io/windows-security-event-log-triage-tool/) or run the project locally.
+2. In Windows Event Viewer, export the event records you are authorised to inspect as a CSV file.
+3. Choose the CSV, optionally adjust the repeated-failed-logon threshold, and select **Analyse events**.
+4. Review the prioritised findings, the supporting events, and any event sequence that needs more evidence.
 
-## Limitations and false positives
+**Tip:** The tool needs a recognisable **Event ID** column. CSV headers vary between Windows versions and locales, so common variants such as **Event ID**, **EventID**, and **event_id** are recognised. Raw **.evtx** files are not supported in version 1.
 
-- Windows CSV exports and column names can differ between versions and configurations. The tool requires a recognizable Event ID header.
-- Date parsing relies on the browser's built-in date parser. If timestamps cannot be parsed, event order falls back to row order and the report should be treated accordingly.
-- Not every event contains an account, source IP, workstation, process, or command line.
-- The `User` field can identify the actor rather than the target account. The tool extracts common target-account labels from event messages, but unusual message formats can reduce correlation quality.
-- Logging policy and retention affect which events are available. The absence of an event does not prove an activity did not happen.
-- Repeated failures may come from a mistyped password or stale service credentials. Account creation, group changes, services, and log clearing can all be legitimate administration.
-- Static browser analysis provides limited context and does not replace a SIEM, EDR, or professional SOC process. Windows Event IDs alone cannot determine intent.
-- The parser has a 25 MB file-size limit and the table shows at most 1,000 matching rows at a time.
+## Read the result carefully
 
-## Future ideas (not included in this version)
+The output is an **explainable triage signal**, not a probability that an event is malicious. It reflects only the records and fields available in the selected CSV.
 
-Raw `.evtx` parsing, Sysmon support, deeper PowerShell analysis, process-tree visualisation, MITRE ATT&CK mapping, richer timeline analysis, login baselining, scheduled-task and Defender events, incident report export, and SIEM integration.
+| Result | What it means |
+| --- | --- |
+| High-priority review | An event or sequence deserves prompt investigation, such as cleared audit logs or a suspicious authentication pattern |
+| Review cue | An account, group, process, PowerShell, or service event needs context before a conclusion can be made |
+| No high-priority finding | The selected records did not trigger a current rule; it does **not** prove the system or account is safe |
+
+Use the results to decide what to inspect next: confirm the account owner, expected host and source IP, change ticket, process path, command line, or related records from your approved security tools.
+
+## Privacy by design
+
+- CSV reading and analysis take place in the browser with the local File API.
+- No backend, database, account, analytics, telemetry, AI service, external API, or tracking is used.
+- The page makes no application network requests; fonts and styling use local system resources.
+- Selected CSV data stays in the active browser page and is not intentionally persisted by the app.
+- Event values are rendered as text after escaping; the app does not inject event data as executable HTML.
+
+Only analyse systems and logs you own or are authorised to investigate.
+
+## Run it locally
+
+No package installation, build step, or API key is required.
+
+~~~bash
+git clone https://github.com/Namitesh07/windows-security-event-log-triage-tool.git
+cd windows-security-event-log-triage-tool
+~~~
+
+Open **index.html** in a modern browser, then load one of the CSV files in **samples/** or choose your own authorised Windows Event Viewer CSV export.
+
+## Know the limits
+
+This project is an educational aid for deciding what to inspect next. It does **not**:
+
+- prove that activity is malicious, authorised, or harmless;
+- parse raw **.evtx** files, Sysmon data, or every Windows Event ID;
+- replace a SIEM, EDR, incident-response process, or professional SOC judgement;
+- guarantee event order when a browser cannot parse the exported timestamp format — row order is used as a fallback;
+- know your organisation's normal baseline, logging policy, change records, or retention gaps; or
+- establish that events with different users, hosts, or contexts are related.
+
+Mistyped passwords, stale service credentials, account management, group changes, services, PowerShell activity, and cleared logs can all be legitimate in the right context. Validate important findings with authorised sources before escalating.
+
+## Built with
+
+**HTML · CSS · Vanilla JavaScript · Browser File API**
+
+No runtime libraries or third-party services are required by the analyser.
+
+Created by **Namitesh Pandey** for learning and portfolio use.
+
+**Investigate the evidence. Keep the human in the loop.**
+
+Repository shared for portfolio and educational viewing. No licence is granted at this time.
