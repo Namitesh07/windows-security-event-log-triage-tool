@@ -1,0 +1,12 @@
+{
+  "name": "windows-security-event-log-triage-tool",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Browser-based educational Windows event log triage tool",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

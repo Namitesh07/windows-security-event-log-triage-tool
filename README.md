@@ -27,7 +27,7 @@ Analysis happens entirely in the browser. The tool does not upload the selected 
 | Account and group changes | New accounts (4720), deleted accounts (4726), and additions to global or local security groups (4728 / 4732) |
 | Process, script, and service activity | Process creation (4688), PowerShell script-block records (4104), and service installation (7045) when those fields are present |
 | Defence impairment | Security audit log clearance (1102), which always creates a high-priority review cue |
-| Context | Available account, host, source-IP, workstation, process, command-line, timestamp, and event-message details |
+| Context | Available affected account and actor, host, source IP, workstation, logon type, process and parent path, process ID, command line, service name/path, PowerShell script-block ID, timestamp, and message details |
 | Learning scenarios | Four fictional CSV datasets: normal activity, password guessing, account persistence, and suspicious administrative activity |
 
 ### Built to make the reasoning visible
@@ -35,8 +35,8 @@ Analysis happens entirely in the browser. The tool does not upload the selected 
 - **Explainable findings:** every alert is tied to an Event ID, rule, count, or event sequence that can be reviewed.
 - **Configurable authentication threshold:** the repeated-failed-logon threshold starts at **5** and can be adjusted for the current analysis.
 - **Careful correlation:** the tool can connect failed logons followed by success, and new-account creation followed by group addition, when the uploaded records provide matching evidence.
-- **Transparent scope:** correlations are limited to the uploaded dataset; the tool does not claim unrelated people or events are connected.
-- **CSV guardrails:** common Event ID header names are accepted, quoted fields are supported, and a missing Event ID column produces a clear error instead of a crash.
+- **Transparent scope:** correlations use the affected account parsed from event details, not the CSV User actor field; they are limited to the uploaded dataset.
+- **CSV guardrails:** common Event ID header names are accepted; quoted commas, quotes, and multiline messages are supported; malformed quoting and inconsistent row widths report the affected row.
 - **Local practice cases:** all demo names and hosts are fictional; example IP addresses use documentation ranges reserved for examples.
 
 ## How to use it
@@ -46,7 +46,7 @@ Analysis happens entirely in the browser. The tool does not upload the selected 
 3. Choose the CSV, optionally adjust the repeated-failed-logon threshold, and select **Analyse events**.
 4. Review the prioritised findings, the supporting events, and any event sequence that needs more evidence.
 
-**Tip:** The tool needs a recognisable **Event ID** column. CSV headers vary between Windows versions and locales, so common variants such as **Event ID**, **EventID**, and **event_id** are recognised. Raw **.evtx** files are not supported in version 1.
+**Tip:** The tool needs a recognisable **Event ID** column. CSV headers vary between Windows versions and locales, so common variants such as **Event ID**, **EventID**, and **event_id** are recognised. ISO dates are parsed explicitly. Ambiguous numeric dates are flagged, and the affected records use CSV row order for sequence checks. Raw **.evtx** files are not supported in version 1.
 
 ## Read the result carefully
 
@@ -79,7 +79,17 @@ git clone https://github.com/Namitesh07/windows-security-event-log-triage-tool.g
 cd windows-security-event-log-triage-tool
 ~~~
 
-Open **index.html** in a modern browser, then load one of the CSV files in **samples/** or choose your own authorised Windows Event Viewer CSV export.
+Open **index.html** in a modern browser, then load one of the CSV files in **samples/** or choose your own authorised Windows Event Viewer CSV export. To run the parser and detection tests, install Node.js 18 or later and run **npm test** from the repository folder.
+
+## Test the analysis logic
+
+The project includes a dependency-free Node.js test suite for CSV parsing, timestamp handling, event-field extraction, detection rules, and all four checked-in sample datasets.
+
+~~~bash
+npm test
+~~~
+
+Node.js 18 or later is required to run the tests. The browser-based analyser still runs without installing Node.js.
 
 ## Know the limits
 
@@ -88,7 +98,7 @@ This project is an educational aid for deciding what to inspect next. It does **
 - prove that activity is malicious, authorised, or harmless;
 - parse raw **.evtx** files, Sysmon data, or every Windows Event ID;
 - replace a SIEM, EDR, incident-response process, or professional SOC judgement;
-- guarantee event order when a browser cannot parse the exported timestamp format — row order is used as a fallback;
+- guarantee event order for ambiguous or unrecognised timestamps — the tool reports those rows and uses CSV row order as a fallback;
 - know your organisation's normal baseline, logging policy, change records, or retention gaps; or
 - establish that events with different users, hosts, or contexts are related.
 

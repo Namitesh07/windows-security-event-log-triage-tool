@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#0b1220">
   <title>Windows Security Event Log Triage Tool</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="analysis.js" defer></script>
   <script src="script.js" defer></script>
 </head>
 <body>
@@ -31,7 +32,7 @@
         <div><p class="eyebrow">01 / OPEN A CASE</p><h2 id="ingest-title">Bring in a Windows CSV export</h2></div>
         <span class="step-chip">CSV ONLY · NO INSTALL</span>
       </div>
-      <p class="muted">Export security events from Event Viewer as CSV, then choose a file or drop it below. Raw <code>.evtx</code> files are not supported.</p>
+      <p class="muted">Export security events from Event Viewer as CSV, then choose a file or drop it below. Raw <code>.evtx</code> files are not supported. Ambiguous numeric dates are flagged; affected event order falls back to CSV row order.</p>
       <label class="drop-zone" id="drop-zone" for="csv-file">
         <input id="csv-file" type="file" accept=".csv,text/csv">
         <span class="upload-icon" aria-hidden="true">↑</span>
