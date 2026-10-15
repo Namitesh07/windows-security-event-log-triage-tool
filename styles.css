@@ -3,3 +3,32 @@
 @media(max-width:850px){.metrics-grid{grid-template-columns:repeat(2,1fr)}.report-columns{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.search-field{grid-column:1/-1}.education-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.topbar{padding:0 17px;height:64px}.shell{padding:0 16px 32px}.hero{padding:45px 0 28px}.hero h1{font-size:3.15rem}.privacy-note{font-size:.75rem;align-items:flex-start}.workspace-card,.panel,.education-card,.howto-card{padding:17px}.section-heading{align-items:flex-start;flex-direction:column}.settings-row{align-items:flex-start;flex-direction:column;gap:9px}.setting-controls{width:100%}.report-title-row{align-items:flex-start}.filters{grid-template-columns:1fr}.search-field{grid-column:auto}.metrics-grid{gap:7px}.metric{padding:11px}.metric strong{font-size:1.3rem}.finding-top{flex-direction:column}.action-row{align-items:flex-start;flex-direction:column}.demo-buttons{display:grid;grid-template-columns:1fr 1fr}.demo-buttons .button{min-height:46px}footer{flex-direction:column;gap:5px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+/* Correlation controls and traceable finding evidence */
+.settings-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:24px 4px 10px;align-items:start}
+.settings-grid label{display:flex;flex-direction:column;font-size:.8rem;font-weight:700;gap:6px}
+.settings-grid input{width:100%;padding:9px 10px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px}
+.settings-grid small{font-weight:400;color:var(--muted);line-height:1.4}
+.settings-grid button{justify-self:start}
+.coverage-note,.priority-guide{font-size:.8rem;color:var(--muted);padding:12px 14px;border:1px solid var(--line);border-radius:10px;margin:10px 0}
+.priority-guide summary{cursor:pointer;color:var(--teal)}
+.priority-guide p{max-width:85ch}
+.finding-card:focus{outline:3px solid var(--teal);outline-offset:3px}
+.match-fields{display:grid;grid-template-columns:minmax(110px,1fr) minmax(0,2fr);gap:5px 10px;margin:12px 0;font-size:.76rem;line-height:1.5}
+.match-fields dt{color:var(--muted);font-weight:700}
+.match-fields dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.evidence-button{margin:6px 0}
+.evidence-scope{border:1px solid var(--teal);background:#65d8c20b;border-radius:10px;padding:12px;margin:10px 0}
+.evidence-scope p{margin:0 0 10px;font-size:.84rem;overflow-wrap:anywhere}
+.event-panel{scroll-margin-top:20px}
+.event-details{margin-top:10px;white-space:normal}
+.event-details summary{color:var(--teal);cursor:pointer;font-size:.74rem}
+.event-details h4{margin:12px 0 5px}
+.event-details pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:350px;overflow:auto;font: .74rem/1.5 Consolas,monospace;border:1px solid var(--line);border-radius:7px;padding:10px}
+.event-details .button{font-size:.72rem;margin-top:8px}
+.table-pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:.78rem;margin-top:12px;color:var(--muted)}
+.event-reference details{font-size:.75rem;color:var(--muted);margin-top:5px}
+.event-reference summary{cursor:pointer;color:var(--blue)}
+.event-reference p{margin:5px 0}
+@media(max-width:850px){.settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.settings-grid{grid-template-columns:1fr}.match-fields{grid-template-columns:1fr}.match-fields dd{margin-bottom:8px}.table-pager{align-items:flex-start}.finding-meta{overflow-wrap:anywhere}.report-title-row .step-chip{white-space:normal;overflow-wrap:anywhere;max-width:50%}}
+#dataset-tag{max-width:50%;white-space:normal;overflow-wrap:anywhere;text-align:right}

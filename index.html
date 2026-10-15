@@ -32,7 +32,7 @@
         <div><p class="eyebrow">01 / OPEN A CASE</p><h2 id="ingest-title">Bring in a Windows CSV export</h2></div>
         <span class="step-chip">CSV ONLY · NO INSTALL</span>
       </div>
-      <p class="muted">Export security events from Event Viewer as CSV, then choose a file or drop it below. Raw <code>.evtx</code> files are not supported. Ambiguous numeric dates are flagged; affected event order falls back to CSV row order.</p>
+      <p class="muted">Export security events from Event Viewer as CSV, then choose a file or drop it below. Raw <code>.evtx</code> files are not supported. Ambiguous numeric dates are flagged and excluded from timed correlations. Files up to 25 MB are supported.</p>
       <label class="drop-zone" id="drop-zone" for="csv-file">
         <input id="csv-file" type="file" accept=".csv,text/csv">
         <span class="upload-icon" aria-hidden="true">↑</span>
@@ -52,37 +52,46 @@
           <button class="button button-secondary" data-sample="password" type="button">Load Password Guessing</button>
           <button class="button button-secondary" data-sample="account" type="button">Load Privilege Escalation</button>
           <button class="button button-secondary" data-sample="mixed" type="button">Load Mixed SOC Sample</button>
+          <button class="button button-secondary" data-sample="advanced" type="button">Load Correlation and Policy Lab</button>
         </div>
         <span class="demo-label">DEMO DATA · FICTIONAL USERS, HOSTS, AND RESERVED IP ADDRESSES</span>
       </details>
     </section>
 
-    <section id="settings" class="settings-row" aria-label="Triage settings">
-      <div><label for="failure-threshold">Repeated failed logon threshold</label><p class="muted small">Educational default is 5 attempts.</p></div>
-      <div class="setting-controls"><input id="failure-threshold" type="number" min="2" max="100" value="5"><button class="button button-quiet" id="reset-settings" type="button">Reset defaults</button></div>
+    <section id="settings" class="settings-grid" aria-label="Triage settings">
+      <label for="failure-threshold">Failure threshold<input id="failure-threshold" type="number" min="2" max="100" value="5"><small>Attempts for the same account/source/host</small></label>
+      <label for="auth-window">Authentication window (minutes)<input id="auth-window" type="number" min="1" max="1440" value="10"><small>Failures, success-after-failures, and spraying</small></label>
+      <label for="spray-threshold">Spray account threshold<input id="spray-threshold" type="number" min="2" max="100" value="5"><small>Distinct accounts from one IP and host</small></label>
+      <label for="account-window">Account change window (minutes)<input id="account-window" type="number" min="1" max="1440" value="30"><small>Creation followed by group addition</small></label>
+      <button class="button button-quiet" id="reset-settings" type="button">Reset defaults</button>
     </section>
-    <p class="muted threshold-note">Security thresholds vary by environment. These values are educational defaults rather than universal SOC detection rules.</p>
+    <p class="muted threshold-note">These educational defaults need tuning for your environment. Timed correlations require a usable timestamp and matching identity and host context.</p>
 
     <section id="report" class="report-section" aria-live="polite" hidden>
       <div class="report-title-row"><div><p class="eyebrow">02 / TRIAGE REPORT</p><h2>What stands out</h2></div><div id="dataset-tag" class="step-chip">UPLOADED DATA</div></div>
       <div id="summary-banner" class="summary-banner"></div>
+      <p id="coverage-note" class="coverage-note"></p>
+      <details class="priority-guide"><summary>How review priority works</summary><p>High: 60+ points, investigate promptly. Medium: 30–59 points, investigate with context. Low: 1–29 points, validate routine activity. Informational: 0 points, context only. Each finding shows its rule and contributing points. Scores are educational priority aids and are not added into a dataset risk score.</p></details>
       <div id="metrics" class="metrics-grid"></div>
       <div class="report-columns">
         <div class="panel"><div class="panel-heading"><div><p class="eyebrow">INVESTIGATE</p><h3>Findings</h3></div><span id="finding-count" class="count-pill">0</span></div><div id="findings" class="finding-list"></div></div>
         <aside class="panel side-panel"><p class="eyebrow">AT A GLANCE</p><h3>Activity snapshot</h3><div id="top-accounts"></div><div id="top-failures"></div><div id="common-ids"></div></aside>
       </div>
-      <div class="panel event-panel">
+      <div class="panel event-panel" id="event-panel">
         <div class="panel-heading"><div><p class="eyebrow">EVENT EVIDENCE</p><h3>Parsed events</h3></div><span id="visible-count" class="muted small"></span></div>
+        <div class="evidence-scope" id="evidence-scope" hidden><p id="evidence-title"></p><button class="button button-secondary" id="evidence-back" type="button">Back to finding</button></div>
+        <button class="button button-quiet" id="show-all-events" type="button">Show all events / clear filters</button>
         <div class="filters" role="search">
           <label class="search-field"><span class="sr-only">Search events</span><input id="event-search" type="search" placeholder="Search account, message, IP…"></label>
           <label><span class="sr-only">Filter by event ID</span><select id="filter-id"><option value="">All event IDs</option></select></label>
-          <label><span class="sr-only">Filter by severity</span><select id="filter-severity"><option value="">All severities</option><option>High</option><option>Medium</option><option>Low</option><option>Informational</option></select></label>
+          <label><span class="sr-only">Filter by review priority</span><select id="filter-severity"><option value="">All review priorities</option><option>High</option><option>Medium</option><option>Low</option><option>Informational</option></select></label>
           <label><span class="sr-only">Filter by source IP</span><select id="filter-ip"><option value="">All source IPs</option></select></label>
           <label><span class="sr-only">Filter by event type</span><select id="filter-type"><option value="">All event types</option></select></label>
         </div>
-        <div class="table-wrap"><table><thead><tr><th scope="col">Time</th><th scope="col">ID</th><th scope="col">Severity</th><th scope="col">Account</th><th scope="col">Source</th><th scope="col">What happened</th></tr></thead><tbody id="event-rows"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th scope="col">Time</th><th scope="col">ID</th><th scope="col">Review priority</th><th scope="col">Account</th><th scope="col">Source</th><th scope="col">What happened</th></tr></thead><tbody id="event-rows"></tbody></table></div>
+        <div class="table-pager"><button class="button button-quiet" id="page-prev" type="button">Previous events</button><span id="page-label" role="status"></span><button class="button button-quiet" id="page-next" type="button">Next events</button></div>
       </div>
-      <div class="timeline-panel panel"><div class="panel-heading"><div><p class="eyebrow">SEQUENCE</p><h3>Noteworthy activity timeline</h3></div></div><ol id="timeline" class="timeline-list"></ol></div>
+      <div class="timeline-panel panel"><div class="panel-heading"><div><p class="eyebrow">SEQUENCE</p><h3>Noteworthy activity timeline</h3></div></div><p class="muted small">Parsed timestamps are shown first; unparsed times follow in CSV row order.</p><ol id="timeline" class="timeline-list"></ol></div>
       <p class="scoring-note">Investigation score is an explainable educational prioritisation aid, not a probability of compromise.</p>
     </section>
 
@@ -95,7 +104,7 @@
       </article>
       <article class="education-card">
         <p class="eyebrow">QUICK REFERENCE</p><h2>Event IDs to know</h2>
-        <dl class="event-reference"><div><dt>4624</dt><dd>Successful logon</dd></div><div><dt>4625</dt><dd>Failed logon</dd></div><div><dt>4688</dt><dd>Process created</dd></div><div><dt>4720</dt><dd>User account created</dd></div><div><dt>4726</dt><dd>User account deleted</dd></div><div><dt>4728</dt><dd>Added to a global security group</dd></div><div><dt>4732</dt><dd>Added to a local security group</dd></div><div><dt>1102</dt><dd>Security audit log cleared</dd></div><div><dt>4104</dt><dd>PowerShell script block logged</dd></div><div><dt>7045</dt><dd>Windows service installed</dd></div></dl>
+        <dl class="event-reference" id="event-reference"></dl>
       </article>
     </section>
 

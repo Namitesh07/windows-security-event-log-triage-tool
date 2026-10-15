@@ -165,6 +165,9 @@
     const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:?\d{2})?)?$/i);
     if (iso) {
       if (iso[8]) {
+        const year = Number(iso[1]), month = Number(iso[2]), day = Number(iso[3]);
+        const hour = Number(iso[4] || 0), minute = Number(iso[5] || 0), second = Number(iso[6] || 0);
+        if (month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(year, month, 0)).getUTCDate() || hour > 23 || minute > 59 || second > 59) return { date: null, status: 'unrecognized' };
         const date = new Date(text.replace(' ', 'T'));
         return Number.isNaN(date.getTime()) ? { date: null, status: 'unrecognized' } : { date, status: 'valid' };
       }
@@ -211,223 +214,362 @@
     return { date: null, status: 'unrecognized' };
   }
 
-  function isAfter(later, earlier) {
-    if (later.date && earlier.date) return later.date.getTime() >= earlier.date.getTime();
-    return later.index > earlier.index;
+  const DEFAULT_SETTINGS = Object.freeze({ failureThreshold: 5, authWindowMinutes: 10, sprayAccountThreshold: 5, accountWindowMinutes: 30 });
+  const severityOrder = Object.freeze({ High: 0, Medium: 1, Low: 2, Informational: 3 });
+  const logonTypes = Object.freeze({
+    '2': 'Interactive', '3': 'Network', '4': 'Batch', '5': 'Service', '7': 'Unlock',
+    '8': 'NetworkCleartext', '9': 'NewCredentials', '10': 'RemoteInteractive',
+    '11': 'CachedInteractive', '12': 'CachedRemoteInteractive', '13': 'CachedUnlock'
+  });
+  const eventCatalog = Object.freeze({
+    '4624': { label: 'Successful logon', audit: 'Audit Logon (Success)', channel: 'Security', fields: 'Target account/domain, reporting host, source IP, logon type, timestamp' },
+    '4625': { label: 'Failed logon', audit: 'Audit Logon (Failure)', channel: 'Security', fields: 'Target account/domain, reporting host, source IP, logon type, timestamp' },
+    '4648': { label: 'Explicit credentials used for a logon attempt', audit: 'Audit Logon (Success)', channel: 'Security', fields: 'Subject, account whose credentials were used, target server, process' },
+    '4740': { label: 'User account locked out', audit: 'Audit User Account Management (Success)', channel: 'Security', fields: 'Locked account, caller computer, subject' },
+    '4688': { label: 'Process created', audit: 'Audit Process Creation (Success); enable Include command line in process creation events for command-line cues', channel: 'Security', fields: 'New process path, creator process path, command line' },
+    '4720': { label: 'User account created', audit: 'Audit User Account Management (Success)', channel: 'Security', fields: 'New account/domain or SID, subject, reporting host, timestamp' },
+    '4726': { label: 'User account deleted', audit: 'Audit User Account Management (Success)', channel: 'Security', fields: 'Deleted account, subject' },
+    '4728': { label: 'Added to global security group', audit: 'Audit Security Group Management (Success)', channel: 'Security', fields: 'Member name/domain or SID, group name/SID, subject, reporting host, timestamp' },
+    '4732': { label: 'Added to local security group', audit: 'Audit Security Group Management (Success)', channel: 'Security', fields: 'Member name/domain or SID, group name/SID, subject, reporting host, timestamp' },
+    '4698': { label: 'Scheduled task created', audit: 'Audit Other Object Access Events (Success)', channel: 'Security', fields: 'Task name/content, subject' },
+    '4702': { label: 'Scheduled task updated', audit: 'Audit Other Object Access Events (Success)', channel: 'Security', fields: 'Task name/content, subject' },
+    '4699': { label: 'Scheduled task deleted', audit: 'Audit Other Object Access Events (Success)', channel: 'Security', fields: 'Task name, subject' },
+    '4719': { label: 'System audit policy changed', audit: 'Audit Audit Policy Change; Windows records this event even when that subcategory is disabled', channel: 'Security', fields: 'Subject, subcategory, audit policy changes' },
+    '4946': { label: 'Windows Firewall rule added', audit: 'Audit MPSSVC Rule-Level Policy Change (Success)', channel: 'Security', fields: 'Rule name/ID, profile' },
+    '4947': { label: 'Windows Firewall rule modified', audit: 'Audit MPSSVC Rule-Level Policy Change (Success)', channel: 'Security', fields: 'Rule name/ID, profile' },
+    '4948': { label: 'Windows Firewall rule deleted', audit: 'Audit MPSSVC Rule-Level Policy Change (Success)', channel: 'Security', fields: 'Rule name/ID, profile' },
+    '4950': { label: 'Windows Firewall setting changed', audit: 'Audit MPSSVC Rule-Level Policy Change (Success)', channel: 'Security', fields: 'Setting type/value, profile' },
+    '1102': { label: 'Security audit log cleared', audit: 'Event Log service records Security log clearing', channel: 'Security', fields: 'Subject, reporting host, timestamp' },
+    '4104': { label: 'PowerShell script block logged', audit: 'Enable PowerShell Script Block Logging', channel: 'Microsoft-Windows-PowerShell/Operational (or PowerShellCore/Operational)', fields: 'Script block text/ID, fragment number/total, reporting host' },
+    '7045': { label: 'Windows service installed', audit: 'Service Control Manager service-installation logging', channel: 'System', fields: 'Service name, image path, account, reporting host' }
+  });
+  const labelById = Object.freeze(Object.fromEntries(Object.entries(eventCatalog).map(([id, value]) => [id, value.label])));
+  const clean = value => {
+    const text = String(value ?? '').trim();
+    return /^(?:-|N\/A|NULL|S-1-0-0)$/i.test(text) ? '' : text;
+  };
+  const lower = value => clean(value).toLowerCase();
+  const isSid = value => /^S-\d-(?:\d+-)+\d+$/i.test(value);
+  function splitAccount(value, domain = '') {
+    const text = clean(value);
+    const slash = text.lastIndexOf('\\');
+    if (slash >= 0) return { name: text.slice(slash + 1), domain: text.slice(0, slash) || clean(domain) };
+    const at = text.indexOf('@');
+    if (at > 0) return { name: text.slice(0, at), domain: text.slice(at + 1) };
+    return { name: text, domain: clean(domain) };
   }
 
-  const targetPatternsById = {
-    '4624': [/(?:TargetUserName|Target User Name|Account Name|Account):\s*([^;\r\n]+)/i],
-    '4625': [/(?:TargetUserName|Target User Name|Account Name|Account):\s*([^;\r\n]+)/i],
-    '4720': [/(?:Target Account Name|TargetUserName|New Account Name|New Account):\s*([^;\r\n]+)/i],
-    '4726': [/(?:Target Account Name|TargetUserName|Deleted Account Name|Account Name):\s*([^;\r\n]+)/i],
-    '4728': [/(?:Member Account Name|MemberName|Target Account Name|TargetUserName):\s*([^;\r\n]+)/i],
-    '4732': [/(?:Member Account Name|MemberName|Target Account Name|TargetUserName):\s*([^;\r\n]+)/i]
-  };
-  const genericTargetPatterns = [/(?:Target Account Name|TargetUserName|Target User Name|Member Account Name|MemberName|Account Name|Account):\s*([^;\r\n]+)/i];
-  const actorPatterns = [/(?:Subject Account Name|SubjectUserName|Subject User Name|CallerUserName|Caller User Name):\s*([^;\r\n]+)/i];
-
+  // English Event Viewer messages have repeated labels under Subject, Member, Group, etc.
+  // Keep those sections separate so the subject is never mistaken for the logon target.
+  function messageFields(text) {
+    const fields = new Map();
+    let section = '', lastKey = '';
+    for (const raw of String(text).replace(/\r\n?/g, '\n').split(/\n|;(?=\s*[A-Za-z][A-Za-z0-9 _\/-]{1,89}:(?!\/\/))/)) {
+      const line = raw.trim().replace(/^.*?\.\s+(?=[A-Za-z][A-Za-z ]+:)/, '');
+      const heading = line.match(/^([A-Za-z][A-Za-z0-9 ()\/_ -]{0,89}):\s*$/);
+      if (heading) { section = normalizeHeader(heading[1]); lastKey = ''; continue; }
+      const pair = line.match(/^([A-Za-z][A-Za-z0-9 _\/-]{0,89}):[ \t]*(.*)$/);
+      if (!pair) {
+        if (lastKey && /:(?:taskcontent|taskcontentnew|scriptblocktext)$/.test(lastKey)) fields.set(lastKey, fields.get(lastKey) + '\n' + raw);
+        continue;
+      }
+      const key = section + ':' + normalizeHeader(pair[1]);
+      if (!fields.has(key)) fields.set(key, clean(pair[2]));
+      lastKey = key;
+    }
+    return fields;
+  }
   function normalizeEvents(rows) {
     if (!Array.isArray(rows) || rows.length < 2) throw new Error('This CSV needs a header row and at least one event record.');
     const headers = rows[0].map(value => value.trim());
     const map = mapHeaders(headers);
+    const columnMap = new Map(headers.map((header, index) => [normalizeHeader(header), index]));
     const events = [];
-    const diagnostics = {
-      rowsRead: rows.length - 1,
-      rowsParsed: 0,
-      rowsSkipped: 0,
-      blankEventIdRows: [],
-      invalidEventIdRows: [],
-      invalidTimestamps: 0,
-      invalidTimestampRows: [],
-      ambiguousTimestamps: 0,
-      ambiguousTimestampRows: [],
-      missingTimestamps: 0,
-      missingTimestampRows: []
-    };
-
+    const diagnostics = { rowsRead: rows.length - 1, rowsParsed: 0, rowsSkipped: 0, blankEventIdRows: [], invalidEventIdRows: [],
+      invalidTimestamps: 0, invalidTimestampRows: [], ambiguousTimestamps: 0, ambiguousTimestampRows: [], missingTimestamps: 0, missingTimestampRows: [] };
     for (let index = 1; index < rows.length; index += 1) {
       const row = rows[index];
       if (!row.some(value => String(value).trim())) continue;
       const lineNumber = row.lineNumber || index + 1;
-      if (row.length !== headers.length) {
-        const detail = row.length < headers.length ? 'has too few columns' : 'has too many columns';
-        throw new Error('CSV record ' + detail + ' (row ' + lineNumber + '): expected ' + headers.length + ' columns, found ' + row.length + '.');
-      }
-
+      if (row.length !== headers.length) throw new Error('CSV record has ' + (row.length < headers.length ? 'too few' : 'too many') + ' columns (row ' + lineNumber + '): expected ' + headers.length + ' columns, found ' + row.length + '.');
       const rawId = pick(row, map.id);
-      const idMatch = rawId.match(/(?:^|\D)(\d{1,6})(?:\D|$)/);
-      if (!rawId) {
-        diagnostics.rowsSkipped += 1;
-        diagnostics.blankEventIdRows.push(lineNumber);
-        continue;
-      }
+      const idMatch = rawId.match(/^(?:Event\s*(?:ID)?\s*[:=]?\s*)?(\d{1,6})$/i);
       if (!idMatch) {
         diagnostics.rowsSkipped += 1;
-        diagnostics.invalidEventIdRows.push(lineNumber);
+        (rawId ? diagnostics.invalidEventIdRows : diagnostics.blankEventIdRows).push(lineNumber);
         continue;
       }
-
-      const id = idMatch[1];
-      const message = pick(row, map.message);
-      const user = pick(row, map.user);
-      const timeText = pick(row, map.time);
-      const targetPatterns = targetPatternsById[id] || genericTargetPatterns;
-      const targetInMessage = firstMatch(message, targetPatterns);
-      const logonFallback = ['4624', '4625'].includes(id) ? user.replace(/^.*\\/, '').replace(/\s+\(.+$/, '') : '';
-      const account = targetInMessage || logonFallback;
-      const actor = firstMatch(message, actorPatterns) || user;
-      const ipCandidate = firstMatch(message, [/(?:Source Network Address|Source Address|IpAddress|IP Address|Client Address|Source IP):\s*([^;\s\r\n]+)/i]);
-      const ip = ipCandidate && ipCandidate !== '-' ? ipCandidate : '';
-      const workstation = firstMatch(message, [/(?:Workstation Name|Workstation|Caller Computer Name|Computer Name):\s*([^;\r\n]+)/i]);
-      const process = firstMatch(message, [/(?:New Process Name|Process Name|Image Path):\s*([^;\r\n]+)/i]);
-      const parent = firstMatch(message, [/(?:Creator Process Name|Parent Process Name|Parent Image):\s*([^;\r\n]+)/i]);
-      const group = firstMatch(message, [/(?:Group Name|Target Group Name):\s*([^;\r\n]+)/i]);
-      const command = firstMatch(message, [/(?:Process Command Line|Command Line):\s*([^;\r\n]+)/i]);
-      const processId = firstMatch(message, [/(?:New Process ID|Process ID):\s*([^;\r\n]+)/i]);
-      const logonType = firstMatch(message, [/(?:Logon Type):\s*([^;\r\n]+)/i]);
-      const serviceName = firstMatch(message, [/(?:Service Name):\s*([^;\r\n]+)/i]);
-      const servicePath = firstMatch(message, [/(?:Service File Name|Service Image Path|ImagePath):\s*([^;\r\n]+)/i]);
-      const scriptBlockId = firstMatch(message, [/(?:ScriptBlock ID|Script Block ID):\s*([^;\r\n]+)/i]);
+      const id = idMatch[1], message = pick(row, map.message), user = clean(pick(row, map.user)), timeText = pick(row, map.time);
+      const fields = messageFields(message);
+      const column = names => {
+        for (const name of names) {
+          const position = columnMap.get(normalizeHeader(name));
+          if (position !== undefined && clean(row[position])) return clean(row[position]);
+        }
+        return '';
+      };
+      const field = (names, sections = ['']) => {
+        for (const section of sections) for (const name of names) {
+          const value = fields.get(normalizeHeader(section) + ':' + normalizeHeader(name));
+          if (value) return value;
+        }
+        return '';
+      };
+      const read = (names, sections = ['']) => {
+        const direct = column(names) || field(names, sections);
+        if (direct) return direct;
+        for (const name of names) for (const [key,value] of fields) if (key.endsWith(':' + normalizeHeader(name)) && value) return value;
+        return '';
+      };
+      const groupChange = ['4728', '4732'].includes(id);
+      const targetSections = id === '4648' ? ['Account Whose Credentials Were Used'] :
+        id === '4740' ? ['Account That Was Locked Out'] :
+        id === '4720' ? ['New Account'] :
+        id === '4726' ? ['Target Account'] :
+        groupChange ? ['Member'] : ['New Logon', 'Account For Which Logon Failed', 'Target Account'];
+      let accountRaw = groupChange ?
+        read(['MemberName', 'Member Account Name']) || field(['Account Name'], targetSections) :
+        read(['TargetUserName', 'Target Account Name', 'Target User Name', 'New Account Name']) || field(['Account Name'], targetSections);
+      const actorRaw = read(['SubjectUserName', 'Subject Account Name', 'Subject User Name', 'CallerUserName']) || field(['Account Name'], ['Subject']) || user;
+      if (!accountRaw && !groupChange) accountRaw = field(['Account Name', 'Account']);
+      // CSV User is only a logon fallback when the message does not identify a Subject.
+      if (!accountRaw && ['4624', '4625'].includes(id) && !field(['Account Name'], ['Subject']) && !read(['SubjectUserName', 'Subject Account Name'])) accountRaw = user;
+      let accountDomain = groupChange ? read(['MemberDomainName', 'Member Account Domain']) :
+        read(['TargetDomainName', 'Target Account Domain', 'New Account Domain']);
+      accountDomain ||= field(['Account Domain'], targetSections);
+      let accountSid = groupChange ? read(['MemberSid', 'Member Security ID']) || field(['Security ID'], ['Member']) :
+        read(['TargetUserSid', 'TargetSid', 'Target Security ID']) || field(['Security ID'], targetSections);
+      if (isSid(accountRaw)) { accountSid ||= accountRaw; accountRaw = ''; }
+      if (accountSid && !isSid(accountSid)) { accountRaw ||= accountSid; accountSid = ''; }
+      const identity = splitAccount(accountRaw, accountDomain);
+      // Do not use the actor's domain for an unrelated target.
+      const userIdentity = splitAccount(user);
+      if (!identity.domain && ['4624', '4625'].includes(id) && lower(userIdentity.name) === lower(identity.name)) identity.domain = userIdentity.domain;
+      const actor = splitAccount(actorRaw, read(['SubjectDomainName', 'Subject Account Domain']) || field(['Account Domain'], ['Subject']));
+      const group = groupChange ? read(['Group Name', 'Target Group Name', 'TargetUserName']) || field(['Group Name', 'Account Name'], ['Group']) : read(['Group Name']);
+      const groupSid = groupChange ? read(['GroupSid', 'TargetSid', 'TargetUserSid', 'Group Security ID']) || field(['Security ID'], ['Group']) : '';
       const timestamp = parseTimestamp(timeText);
-      if (timestamp.status === 'ambiguous') { diagnostics.ambiguousTimestamps += 1; diagnostics.ambiguousTimestampRows.push(lineNumber); }
-      else if (timestamp.status === 'unrecognized') { diagnostics.invalidTimestamps += 1; diagnostics.invalidTimestampRows.push(lineNumber); }
-      else if (timestamp.status === 'missing') { diagnostics.missingTimestamps += 1; diagnostics.missingTimestampRows.push(lineNumber); }
-
+      const timestampKey = timestamp.status === 'ambiguous' ? 'ambiguous' : timestamp.status === 'unrecognized' ? 'invalid' : timestamp.status === 'missing' ? 'missing' : '';
+      if (timestampKey) { diagnostics[timestampKey + 'Timestamps'] += 1; diagnostics[timestampKey + 'TimestampRows'].push(lineNumber); }
+      const uid = 'event-' + (events.length + 1);
       events.push({
-        id, level: pick(row, map.level), timeText, date: timestamp.date, timestampStatus: timestamp.status,
-        source: pick(row, map.source), task: pick(row, map.task), user, actor, account, targetAccount: account,
-        computer: pick(row, map.computer), ip, workstation, process, parent, processId, command, logonType,
-        serviceName, servicePath, scriptBlockId, group, message, keywords: pick(row, map.keywords),
-        index: events.length + 1, lineNumber
+        uid, id, index: events.length + 1, lineNumber, timeText, date: timestamp.date, timestampStatus: timestamp.status,
+        hasTime: /\d{1,2}:\d{2}/.test(timeText), timeBasis: /(?:Z|[+-]\d{2}:?\d{2})$/i.test(timeText) ? 'offset' : 'local',
+        level: pick(row, map.level), source: pick(row, map.source), task: pick(row, map.task), keywords: pick(row, map.keywords),
+        user, actor: actorRaw, actorDomain: actor.domain, account: identity.name, targetAccount: identity.name,
+        accountDomain: identity.domain, accountSid: isSid(accountSid) ? accountSid : '',
+        computer: clean(pick(row, map.computer)), ip: read(['IpAddress', 'Source Network Address', 'Source Address', 'Source IP', 'Client Address', 'Network Address']),
+        workstation: read(['WorkstationName', 'Workstation Name', 'Caller Computer Name', 'CallerComputerName']),
+        process: read(['NewProcessName', 'New Process Name', 'Process Name', 'Image Path']),
+        parent: read(['ParentProcessName', 'Creator Process Name', 'Parent Process Name', 'Parent Image']),
+        processId: read(['NewProcessId', 'New Process ID', 'Process ID']),
+        command: read(['CommandLine', 'Process Command Line', 'Command Line']),
+        logonType: read(['LogonType', 'Logon Type']),
+        serviceName: read(['ServiceName', 'Service Name']), servicePath: read(['Service File Name', 'Service Image Path', 'ImagePath']),
+        scriptBlockId: read(['ScriptBlockId', 'ScriptBlock ID', 'Script Block ID']),
+        scriptText: column(['ScriptBlockText', 'Script Block Text']) || message,
+        scriptFragment: read(['MessageNumber', 'Message Number']), scriptFragmentTotal: read(['MessageTotal', 'Message Total']),
+        group, groupSid, taskName: read(['TaskName', 'Task Name']), taskContent: read(['TaskContent', 'TaskContentNew', 'Task Content']),
+        targetServer: read(['TargetServerName', 'Target Server Name']) || field(['Target Server Name'], ['Target Server']),
+        policyChanges: read(['AuditPolicyChanges', 'Audit Policy Changes', 'Changes']), subcategory: read(['SubcategoryGuid', 'Subcategory', 'Subcategory GUID']),
+        firewallRule: read(['RuleName', 'Rule Name']), firewallRuleId: read(['RuleId', 'Rule ID']),
+        firewallProfile: read(['ProfileChanged', 'Profile Changed', 'Profile']),
+        firewallSetting: read(['SettingType', 'Setting Type']), firewallValue: read(['SettingValue', 'Setting Value']),
+        message, rawFields: headers.map((header, position) => ({ header, value: String(row[position] ?? '') }))
       });
     }
-
     if (!events.length) throw new Error('No rows with a readable Event ID were found. Check the Event ID column and the CSV records.');
     diagnostics.rowsParsed = events.length;
     return { events, diagnostics };
   }
 
-  const labelById = {
-    '4624': 'Successful logon', '4625': 'Failed logon', '4720': 'User account created',
-    '4726': 'User account deleted', '4728': 'Added to global security group',
-    '4732': 'Added to local security group', '1102': 'Security audit log cleared',
-    '4688': 'Process created', '4104': 'PowerShell script block logged',
-    '7045': 'Windows service installed'
-  };
-  const severityOrder = { High: 0, Medium: 1, Low: 2, Informational: 3 };
-  const makeFinding = (title, severity, events, why, benign, next, score) => ({ title, severity, events, why, benign, next, score });
+  const contribution = (label, points) => ({ label, points });
+  const defineRule = (title, breakdown, why, benign, next) => Object.freeze({ title, breakdown, why, benign, next });
+  const authNext = ['Confirm the account owner and source device.', 'Compare source IP, reporting host, logon type, and nearby endpoint activity.', 'Check for stale service credentials and approved authentication tests.'];
+  const accountNext = ['Verify the target account and actor against an approved change.', 'Confirm the group privileges and intended account lifetime.', 'Review subsequent logons and endpoint activity for the account.'];
+  const scriptNext = ['Review the full command or script and the parent process.', 'Confirm the script author, source, and approved purpose.', 'Gather endpoint evidence before deciding whether to escalate.'];
+  const rules = Object.freeze({
+    AUTH_FAILURE_BURST: defineRule('Repeated failed logons', [contribution('Repeated failures within the configured window', 30)], 'The failure threshold was met for the same account, source, and reporting host within one time window.', 'Mistyped passwords or stale service credentials can cause bursts.', authNext),
+    AUTH_SUCCESS_AFTER_FAILURES: defineRule('Possible password guessing followed by success', [contribution('Repeated failures within the configured window', 30), contribution('Subsequent matching successful logon in that window', 30)], 'Repeated failures were followed by success for the same account, source, and reporting host; known logon types are compatible.', 'A legitimate user can succeed after correcting a password.', authNext),
+    AUTH_PASSWORD_SPRAY: defineRule('Possible password spraying across accounts', [contribution('Distinct targeted accounts from one source and host within the window', 45)], 'One source targeted at least the configured number of distinct accounts on the same reporting host.', 'Authentication testing, shared proxies, or misconfigured applications can produce this pattern.', authNext),
+    ACCOUNT_CREATED_GROUP: defineRule('New account granted group membership', [contribution('New account', 15), contribution('Group addition', 20), contribution('Matching identity and host within the configured window', 20)], 'A new account was added to a security group within the configured window on the same reporting host.', 'Approved onboarding or service setup can include both changes.', accountNext),
+    ACCOUNT_CREATED_PRIVILEGED_GROUP: defineRule('New account granted group membership', [contribution('New account', 15), contribution('Known privileged group name or SID', 45), contribution('Matching identity and host within the configured window', 20)], 'A new account was added to a recognised privileged group within the configured window on the same reporting host.', 'Approved privileged onboarding or service setup can include both changes.', accountNext),
+    ACCOUNT_CREATED: defineRule('User account created', [contribution('Account creation event', 15)], 'A new account was created and needs ownership and purpose checks.', 'Routine onboarding and test accounts are common.', accountNext),
+    ACCOUNT_DELETED: defineRule('User account deleted', [contribution('Account deletion event', 10)], 'An account was deleted.', 'Approved offboarding and cleanup are common.', accountNext),
+    GROUP_ADDED: defineRule('Security group membership changed', [contribution('Group addition event', 20)], 'A member was added to a security group.', 'Approved access changes are common.', accountNext),
+    PRIVILEGED_GROUP_ADDED: defineRule('Privileged group membership changed', [contribution('Known privileged group name or SID', 45)], 'A member was added to a recognised privileged group.', 'An approved administrative access request can explain the change.', accountNext),
+    AUDIT_LOG_CLEARED: defineRule('Security audit log cleared', [contribution('Security log clearing removes local audit history', 70)], 'The Security log was cleared, reducing locally available investigation history.', 'Authorised maintenance can include clearing logs.', ['Identify the actor and maintenance record.', 'Check forwarded logs and endpoint evidence around the clearing.', 'Confirm logging continued afterward.']),
+    SERVICE_INSTALLED: defineRule('Windows service installed', [contribution('Service installation event', 25)], 'A service was installed and may run automatically.', 'Software installers and updates commonly install services.', ['Verify service name, image path, publisher, account, and approved change.']),
+    PS_ENCODED: defineRule('PowerShell encoded-content cue', [contribution('Encoded command switch or Base64 conversion in PowerShell context', 40)], 'The command or script contains an encoded-command switch or Base64 conversion.', 'Legitimate automation can use encoded content.', scriptNext),
+    PS_DOWNLOAD_EXECUTE: defineRule('PowerShell download-and-execute cue', [contribution('Download and dynamic evaluation patterns in one PowerShell record', 60)], 'The same command or script contains download and dynamic evaluation expressions.', 'Approved bootstrap scripts and deployment tooling can use this pattern.', scriptNext),
+    OFFICE_SHELL_CHILD: defineRule('Office application launched a shell or script host', [contribution('Office parent and shell/script-host child paths in the same process record', 40)], 'An Office application is recorded as the creator of a shell or script host.', 'Approved macros and add-ins can launch these tools.', scriptNext),
+    SCRIPT_HOST_REMOTE: defineRule('Script host command references a remote resource', [contribution('mshta or regsvr32 command with a remote resource argument', 60)], 'The recorded script-host command includes a remote HTTP resource argument.', 'Some approved legacy deployment tools can use remote resources.', scriptNext),
+    ACCOUNT_LOCKED: defineRule('User account locked out', [contribution('Account lockout event', 25)], 'Windows recorded an account lockout.', 'Mistyped passwords or a stale stored credential can lock an account.', authNext),
+    EXPLICIT_CREDENTIALS: defineRule('Explicit credentials used for a logon attempt', [contribution('Explicit-credential logon attempt event', 15)], 'An application attempted a logon using explicitly supplied credentials; this event alone does not establish success.', 'RunAs, scheduled work, and management tools commonly use explicit credentials.', ['Verify the subject, credential account, target server, and process.', 'Look for related successful or failed logons on the target.']),
+    TASK_CREATED: defineRule('Scheduled task created', [contribution('Task creation event', 25)], 'A scheduled task was created.', 'Installers and approved automation commonly create tasks.', ['Review the task name, full task XML, run account, actions, triggers, and approved change.']),
+    TASK_UPDATED: defineRule('Scheduled task updated', [contribution('Task update event', 25)], 'A scheduled task was updated.', 'Approved automation and software maintenance can update tasks.', ['Compare the task definition with the approved version and check its actor.']),
+    TASK_DELETED: defineRule('Scheduled task deleted', [contribution('Task deletion event', 10)], 'A scheduled task was deleted.', 'Cleanup and software removal can delete tasks.', ['Verify the task name and deletion against approved maintenance.']),
+    AUDIT_POLICY_CHANGED: defineRule('System audit policy changed', [contribution('Audit policy change can affect evidence collection', 40)], 'System audit policy changed; inspect the logged subcategory and change values to determine the effect.', 'Group Policy and approved hardening can change audit settings.', ['Review the subcategory and change values.', 'Verify the actor and approved policy change.', 'Check whether expected events continued to be collected.']),
+    FIREWALL_RULE_CHANGED: defineRule('Windows Firewall rule changed', [contribution('Firewall rule change event', 30)], 'A local firewall rule was added, modified, or deleted; the Event ID identifies the action.', 'Installers, administrators, and approved policy changes can alter rules.', ['Review the rule name/ID and profile.', 'Check the resulting firewall policy and approved change.']),
+    FIREWALL_SETTING_CHANGED: defineRule('Windows Firewall setting changed', [contribution('Firewall setting change event', 30)], 'A firewall setting changed; the logged setting and value need interpretation.', 'Approved policy or network configuration changes can explain the event.', ['Review the setting type, value, and profile.', 'Confirm the resulting firewall state and authorised change.'])
+  });
 
+  function normalizeSettings(input = {}) {
+    const values = typeof input === 'number' ? { failureThreshold: input } : input || {};
+    const bounds = { failureThreshold: [2, 100], authWindowMinutes: [1, 1440], sprayAccountThreshold: [2, 100], accountWindowMinutes: [1, 1440] };
+    return Object.fromEntries(Object.entries(DEFAULT_SETTINGS).map(([key, value]) => {
+      const number = Number(values[key]);
+      return [key, Number.isFinite(number) && number > 0 ? Math.min(bounds[key][1], Math.max(bounds[key][0], Math.floor(number))) : value];
+    }));
+  }
+  function severityForScore(score) { return score >= 60 ? 'High' : score >= 30 ? 'Medium' : score > 0 ? 'Low' : 'Informational'; }
   function eventSort(a, b) {
-    return a.date && b.date ? a.date - b.date : a.index - b.index;
+    if (a.date && b.date) return a.date - b.date || a.index - b.index;
+    if (a.date) return -1;
+    if (b.date) return 1;
+    return a.index - b.index;
   }
-
-  function analyze(events, threshold = 5) {
-    const safeThreshold = Math.max(2, Math.min(100, Number(threshold) || 5));
-    const findings = [];
-    const used = new Set();
-    const byAccount = new Map();
-    for (const event of events) {
-      if (!event.account) continue;
-      const key = event.account.toLowerCase();
-      if (!byAccount.has(key)) byAccount.set(key, []);
-      byAccount.get(key).push(event);
+  function accountDisplay(event) { return (event.accountDomain ? event.accountDomain + '\\' : '') + (event.account || event.accountSid || 'Not identified'); }
+  function identityKey(event) {
+    if (event.account) return lower(event.accountDomain) + '\\' + lower(event.account);
+    return event.accountSid ? lower(event.accountSid) : '';
+  }
+  function sameIdentity(a, b) {
+    if (a.accountSid && b.accountSid && lower(a.accountSid) !== lower(b.accountSid)) return false;
+    if (a.accountSid && b.accountSid) return true;
+    return Boolean(identityKey(a) && identityKey(a) === identityKey(b));
+  }
+  function timed(event) { return Boolean(event.date && event.timestampStatus === 'valid' && event.hasTime); }
+  function authSource(event) { return lower(event.ip) || lower(event.workstation); }
+  function authKey(event) {
+    if (!timed(event) || !identityKey(event) || !event.computer || !authSource(event)) return '';
+    return [identityKey(event), lower(event.computer), authSource(event), event.timeBasis].join('|');
+  }
+  function privilegedGroup(event) {
+    if (/^(?:Administrators|Domain Admins|Enterprise Admins|Schema Admins|Backup Operators|Account Operators|Server Operators|Print Operators)$/i.test(clean(event.group).replace(/^.*\\/, ''))) return true;
+    return /^S-1-5-32-(?:544|548|549|550|551)$/i.test(event.groupSid) || /^S-1-5-21-(?:\d+-){3}(?:512|518|519)$/i.test(event.groupSid);
+  }
+  function makeFinding(ruleId, events, matchedFields = []) {
+    const rule = rules[ruleId];
+    const evidence = [...new Map(events.map(event => [event.uid, event])).values()].sort(eventSort);
+    const scoreBreakdown = rule.breakdown.map(item => ({ ...item }));
+    const score = scoreBreakdown.reduce((sum, item) => sum + item.points, 0);
+    return { id: ruleId + '-' + evidence[0].uid + '-' + evidence.at(-1).uid, ruleId, title: rule.title,
+      events: evidence, score, scoreBreakdown, severity: severityForScore(score), why: rule.why, benign: rule.benign, next: rule.next,
+      matchedFields: matchedFields.filter(item => clean(item.value)).map(item => ({ label: item.label, value: String(item.value) })) };
+  }
+  function groupsBy(events, keyFn) {
+    const groups = new Map();
+    for (const event of events) { const key = keyFn(event); if (!key) continue; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(event); }
+    return [...groups.values()].map(group => group.sort(eventSort));
+  }
+  function windows(events, milliseconds, qualifies) {
+    const result = [];
+    let start = 0, end = 0;
+    while (start < events.length) {
+      end = Math.max(end, start);
+      while (end + 1 < events.length && events[end + 1].date - events[start].date <= milliseconds) end += 1;
+      const batch = events.slice(start, end + 1);
+      if (qualifies(batch)) { result.push(batch); start = end + 1; } else start += 1;
     }
-
-    for (const group of byAccount.values()) {
-      const failures = group.filter(event => event.id === '4625').sort(eventSort);
-      if (failures.length < safeThreshold) continue;
-      const lastFailure = failures.at(-1);
-      const success = group.filter(event => event.id === '4624' && isAfter(event, lastFailure)).sort(eventSort)[0];
-      const involved = success ? [...failures, success] : failures;
-      involved.forEach(event => used.add(event));
-      findings.push(makeFinding(
-        success ? 'Possible password guessing followed by success' : 'Repeated failed logons',
-        success ? 'High' : 'Medium', involved,
-        success ? 'Repeated failed authentication attempts for this account were followed by a successful logon in this dataset.' : 'This account has repeated failed authentication attempts in this dataset.',
-        'A legitimate user may have mistyped a password, or a service may be using stale credentials.',
-        ['Verify the source device and IP address.', 'Check whether this activity was expected for the account.', 'Review nearby authentication and endpoint activity.', 'Check whether other accounts were targeted.'],
-        success ? 30 : 10
-      ));
+    return result;
+  }
+  const matched = (label, value) => ({ label, value });
+  function baseMatch(event) {
+    return [matched('Event ID', event.id + ' · ' + (labelById[event.id] || 'Other event')), matched('Target account', event.account || event.accountSid ? accountDisplay(event) : ''),
+      matched('Actor', event.actor), matched('Reporting host', event.computer)];
+  }
+  function authMatch(batch, settings) {
+    const first = batch[0];
+    return [matched('Target account', accountDisplay(first)), matched('Reporting host', first.computer),
+      matched(first.ip ? 'Source IP' : 'Source workstation', first.ip || first.workstation),
+      matched('Observed logon types', [...new Set(batch.map(event => event.logonType).filter(Boolean))].join(', ')),
+      matched('Failure threshold', settings.failureThreshold), matched('Authentication window', settings.authWindowMinutes + ' minutes'),
+      matched('Observed span', ((batch.at(-1).date - first.date) / 60000).toFixed(2) + ' minutes')];
+  }
+  function analyze(events, input = {}) {
+    const settings = normalizeSettings(input), findings = [], authWindow = settings.authWindowMinutes * 60000, linked = new Set();
+    for (const group of groupsBy(events.filter(event => ['4624', '4625'].includes(event.id)), authKey)) {
+      const failures = group.filter(event => event.id === '4625');
+      for (const success of group.filter(event => event.id === '4624')) {
+        const candidates = failures.filter(event => !linked.has(event.uid) && eventSort(event, success) < 0 && success.date - event.date <= authWindow &&
+          sameIdentity(event, success) && (!event.logonType || !success.logonType || event.logonType === success.logonType));
+        if (candidates.length >= settings.failureThreshold) {
+          candidates.forEach(event => linked.add(event.uid));
+          findings.push(makeFinding('AUTH_SUCCESS_AFTER_FAILURES', [...candidates, success], authMatch([...candidates, success], settings)));
+        }
+      }
+      for (const identityFailures of groupsBy(failures.filter(event => !linked.has(event.uid)), event => event.accountSid || 'unknown-sid')) {
+        for (const batch of windows(identityFailures, authWindow, batch => batch.length >= settings.failureThreshold)) findings.push(makeFinding('AUTH_FAILURE_BURST', batch, authMatch(batch, settings)));
+      }
     }
-
-    for (const [key, group] of byAccount) {
-      const createdAccounts = group.filter(event => event.id === '4720').sort(eventSort);
-      for (const created of createdAccounts) {
-        const addition = events.filter(event => ['4728', '4732'].includes(event.id) && event.account.toLowerCase() === key && isAfter(event, created)).sort(eventSort)[0];
-        if (!addition || used.has(created) || used.has(addition)) continue;
-        used.add(created);
-        used.add(addition);
-        findings.push(makeFinding(
-          'New account granted group membership',
-          /admin|domain controllers|enterprise admins|backup operators/i.test(addition.group) ? 'High' : 'Medium',
-          [created, addition],
-          'An account creation event was followed by a global or local security group addition involving the same account.',
-          'This can be a legitimate onboarding or service-account task if it was approved and documented.',
-          ['Confirm the account creation was authorised.', 'Identify the administrator who made the change.', 'Review the group’s privileges and the new account’s activity.', 'Confirm whether the account is still required.'],
-          25
-        ));
+    const sprayEvents = events.filter(event => event.id === '4625' && timed(event) && event.computer && event.ip && identityKey(event));
+    for (const group of groupsBy(sprayEvents, event => [lower(event.ip), lower(event.computer), event.timeBasis].join('|'))) {
+      for (const batch of windows(group, authWindow, batch => new Set(batch.map(identityKey)).size >= settings.sprayAccountThreshold)) {
+        findings.push(makeFinding('AUTH_PASSWORD_SPRAY', batch, [matched('Source IP', batch[0].ip), matched('Reporting host', batch[0].computer),
+          matched('Distinct target accounts', new Set(batch.map(identityKey)).size), matched('Account threshold', settings.sprayAccountThreshold),
+          matched('Authentication window', settings.authWindowMinutes + ' minutes')]));
       }
     }
 
-    for (const event of events) {
-      if (event.id === '1102') {
-        used.add(event);
-        findings.push(makeFinding('Security audit log cleared', 'High', [event],
-          'The Windows Security audit log was cleared. Clearing can remove useful investigation history and is commonly reviewed as possible defence evasion.',
-          'An administrator may have cleared the log during authorised maintenance or troubleshooting.',
-          ['Confirm who cleared the log and why.', 'Review change records and other log sources around this time.', 'Check whether log collection continued elsewhere.'], 30));
-      } else if (['4728', '4732'].includes(event.id) && !used.has(event)) {
-        const privileged = /administrators|domain admins|enterprise admins|backup operators|account operators|server operators/i.test(event.group + ' ' + event.message);
-        used.add(event);
-        findings.push(makeFinding(
-          privileged ? 'Privileged group membership changed' : 'Security group membership changed',
-          privileged ? 'High' : 'Medium', [event],
-          'An account was added to a security group' + (event.group ? ' (“' + event.group + '”)' : '') + '. Group membership can change what an account is allowed to do.',
-          'This may be an authorised access request or routine administration.',
-          ['Verify the change against an approved request.', 'Confirm the affected account and group are expected.', 'Review the actor and surrounding account activity.'],
-          privileged ? 25 : 15
-        ));
-      } else if (event.id === '4720' && !used.has(event)) {
-        used.add(event);
-        findings.push(makeFinding('User account created', 'Medium', [event],
-          'A new Windows user account was created. Unexpected accounts can provide access that persists beyond a single login.',
-          'Account creation is common during onboarding, testing, or service setup.',
-          ['Confirm the account owner and request.', 'Check whether the account has appropriate groups and an expiry plan.'], 15));
-      } else if (event.id === '4726') {
-        used.add(event);
-        findings.push(makeFinding('User account deleted', 'Low', [event],
-          'A Windows user account was deleted. This may affect access and audit context.',
-          'Routine offboarding or cleanup is a common explanation.',
-          ['Confirm the deletion matches an approved offboarding or cleanup task.'], 5));
-      } else if (event.id === '7045') {
-        used.add(event);
-        findings.push(makeFinding('Windows service installed', 'Medium', [event],
-          'A new Windows service was installed. Services can run automatically and are sometimes used for persistence.',
-          'A software installation or approved system update may create a service.',
-          ['Verify the software, service path, publisher, and installation change.'], 15));
-      } else if (event.id === '4104') {
-        used.add(event);
-        const obfuscated = /frombase64string|encodedcommand|-enc\b|\\x[0-9a-f]{2}|\^|char\s*\(/i.test(event.message);
-        if (obfuscated) findings.push(makeFinding('PowerShell script block contains encoded or obfuscated text', 'Medium', [event],
-          'The logged script block includes patterns often used to hide command content. This is a review cue, not proof of malicious code.',
-          'Administrators and software installers may use encoded commands for legitimate automation.',
-          ['Review the complete script block and its parent process.', 'Confirm the script source and intended change.'], 10));
-      }
+    const linkedAccounts = new Set(), linkedAdditions = new Set();
+    const creations = events.filter(event => event.id === '4720' && timed(event) && event.computer && identityKey(event));
+    for (const addition of events.filter(event => ['4728', '4732'].includes(event.id) && timed(event) && event.computer)) {
+      const created = creations.filter(event => lower(event.computer) === lower(addition.computer) && event.timeBasis === addition.timeBasis &&
+        sameIdentity(event, addition) && eventSort(event, addition) < 0 && addition.date - event.date <= settings.accountWindowMinutes * 60000).sort(eventSort).at(-1);
+      if (!created) continue;
+      linkedAccounts.add(created.uid); linkedAdditions.add(addition.uid);
+      findings.push(makeFinding(privilegedGroup(addition) ? 'ACCOUNT_CREATED_PRIVILEGED_GROUP' : 'ACCOUNT_CREATED_GROUP', [created, addition],
+        [...baseMatch(addition), matched('Group', addition.group || addition.groupSid), matched('Group SID', addition.groupSid), matched('Identity matched by', created.accountSid && addition.accountSid ? 'SID' : 'Account name and domain (including an absent domain)'),
+          matched('Account correlation window', settings.accountWindowMinutes + ' minutes'), matched('Observed span', ((addition.date - created.date) / 60000).toFixed(2) + ' minutes')]));
     }
 
-    const adminEvents = events.filter(event => ['4720', '4728', '4732', '7045', '1102'].includes(event.id));
-    if (adminEvents.length >= 2) findings.push(makeFinding(
-      'Administrative / Privilege Activity', 'Medium', adminEvents,
-      'The dataset includes multiple account, group, service, or audit-log changes. They are summarized together for review; the tool does not assume they are related.',
-      'These changes may reflect normal administration, software installation, or approved access management.',
-      ['Review each event against its own change record.', 'Compare actors, systems, and timestamps before deciding whether the events are connected.'], 10
-    ));
+    const singleRules = { '1102': 'AUDIT_LOG_CLEARED', '7045': 'SERVICE_INSTALLED', '4726': 'ACCOUNT_DELETED', '4740': 'ACCOUNT_LOCKED',
+      '4648': 'EXPLICIT_CREDENTIALS', '4698': 'TASK_CREATED', '4702': 'TASK_UPDATED', '4699': 'TASK_DELETED', '4719': 'AUDIT_POLICY_CHANGED',
+      '4946': 'FIREWALL_RULE_CHANGED', '4947': 'FIREWALL_RULE_CHANGED', '4948': 'FIREWALL_RULE_CHANGED', '4950': 'FIREWALL_SETTING_CHANGED' };
+    for (const event of events) {
+      let ruleId = singleRules[event.id];
+      if (event.id === '4720' && !linkedAccounts.has(event.uid)) ruleId = 'ACCOUNT_CREATED';
+      if (['4728', '4732'].includes(event.id) && !linkedAdditions.has(event.uid)) ruleId = privilegedGroup(event) ? 'PRIVILEGED_GROUP_ADDED' : 'GROUP_ADDED';
+      if (ruleId) findings.push(makeFinding(ruleId, [event], [...baseMatch(event), matched('Group', event.group || event.groupSid), matched('Group SID', event.groupSid),
+        matched('Service', event.serviceName), matched('Service image', event.servicePath), matched('Caller computer', event.workstation),
+        matched('Credential target server', event.targetServer), matched('Task name', event.taskName),
+        matched('Audit subcategory', event.subcategory), matched('Audit changes', event.policyChanges),
+        matched('Firewall rule', event.firewallRule || event.firewallRuleId), matched('Firewall profile', event.firewallProfile),
+        matched('Firewall setting', event.firewallSetting), matched('New setting value', event.firewallValue)]));
 
-    return findings.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.score - a.score);
+      const processName = lower(event.process).split(/[\\/]/).at(-1);
+      const parentName = lower(event.parent).split(/[\\/]/).at(-1);
+      const isPowerShell = event.id === '4104' || (event.id === '4688' && /^(?:powershell|pwsh)(?:\.exe)?$/.test(processName));
+      const text = event.id === '4104' ? event.scriptText : event.command;
+      if (isPowerShell && text) {
+        const encoded = text.match(/(?:^|\s)-(?:encodedcommand|enc|e)(?=\s|:)|\bFromBase64String\s*\(/i);
+        const download = text.match(/\b(?:Invoke-WebRequest|Invoke-RestMethod|DownloadString|DownloadFile)\b/i);
+        const execute = text.match(/\b(?:Invoke-Expression|IEX)\b/i);
+        if (encoded) findings.push(makeFinding('PS_ENCODED', [event], [...baseMatch(event), matched('Matched expression', encoded[0].trim()), matched('New process path', event.process), matched('Script block ID', event.scriptBlockId), matched('Command/script field', event.id === '4104' ? 'Script block text' : 'Process command line')]));
+        if (download && execute) findings.push(makeFinding('PS_DOWNLOAD_EXECUTE', [event], [...baseMatch(event), matched('Download expression', download[0]), matched('Dynamic evaluation expression', execute[0]), matched('New process path', event.process), matched('Script block ID', event.scriptBlockId)]));
+      }
+      if (event.id === '4688' && /^(?:winword|excel|powerpnt|outlook)\.exe$/.test(parentName) && /^(?:cmd|powershell|pwsh|wscript|cscript|mshta)\.exe$/.test(processName)) {
+        findings.push(makeFinding('OFFICE_SHELL_CHILD', [event], [...baseMatch(event), matched('Creator process path', event.parent), matched('New process path', event.process)]));
+      }
+      if (event.id === '4688' && /^(?:mshta|regsvr32)\.exe$/.test(processName)) {
+        const remote = event.command.match(processName === 'mshta.exe' ? /https?:\/\/[^\s"']+/i : /\/i:\s*https?:\/\/[^\s"']+/i);
+        if (remote) findings.push(makeFinding('SCRIPT_HOST_REMOTE', [event], [...baseMatch(event), matched('New process path', event.process), matched('Remote resource argument', remote[0])]));
+      }
+    }
+    return findings.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.score - a.score || a.id.localeCompare(b.id));
   }
-
-  const api = Object.freeze({ parseCsv, parseTimestamp, normalizeEvents, analyze, eventSort, labelById });
+  function correlationCoverage(events) {
+    const authentication = events.filter(event => ['4624', '4625'].includes(event.id));
+    const accounts = events.filter(event => ['4720', '4728', '4732'].includes(event.id));
+    return {
+      authenticationExcluded: authentication.filter(event => !authKey(event)).length,
+      accountChangesExcluded: accounts.filter(event => !timed(event) || !event.computer || !identityKey(event)).length,
+      incompleteScripts: events.filter(event => event.id === '4104' && Number(event.scriptFragmentTotal) > 1).length
+    };
+  }
+  const api = Object.freeze({ parseCsv, parseTimestamp, normalizeEvents, normalizeSettings, analyze, eventSort,
+    labelById, eventCatalog, logonTypes, rules, DEFAULT_SETTINGS, severityForScore, severityOrder, accountDisplay, correlationCoverage });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.EventTriageAnalysis = api;
 })(typeof window !== 'undefined' ? window : globalThis);
