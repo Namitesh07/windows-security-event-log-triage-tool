@@ -799,7 +799,7 @@ td:nth-child(2) {
 
 .education-grid {
   display:grid;
-  grid-template-columns:minmax(280px,.8fr) minmax(0,1.6fr);
+  grid-template-columns:minmax(0,1fr);
   align-items:start;
   gap:14px;
   margin-top:48px;
