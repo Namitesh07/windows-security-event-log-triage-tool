@@ -11,7 +11,7 @@ Explore Windows authentication, account, privilege, and persistence activity wit
 
 A privacy-first, educational triage tool — not a verdict that a system is compromised.
 
-[**Try the demo**](https://namitesh07.github.io/windows-security-event-log-triage-tool/) · [**How it works**](#how-to-use-it) · [**Privacy**](#privacy-by-design) · [**Limitations**](#know-the-limits)
+[**Try the demo**](https://namitesh07.github.io/windows-security-event-log-triage-tool/) · [**How it works**](#how-to-use-it) · [**Privacy**](#privacy-by-design) · [**Limitations**](#know-the-limits) · [**Releases**](https://github.com/Namitesh07/windows-security-event-log-triage-tool/releases)
 
 ## The idea
 
@@ -122,7 +122,7 @@ This project is an educational aid for deciding what to inspect next. It does **
 
 English Event Viewer message sections and common structured CSV field names are supported. Localised message labels may not be extracted; raw rows are still available. Timezone-free timestamps are treated as browser-local wall times, so confirm collection context before interpreting them. PowerShell fragments are inspected separately and are not automatically reassembled. Raw task XML is retained for review.
 
-Reports are snapshots, not importable saved cases or cryptographic evidence records. Collection timezone is analyst context and does not reinterpret dates. Notes are retained across filters, sorting, and re-analysis within the dataset, but starting a new dataset clears the case; export first. Row inspectors shorten individual values above 20,000 characters for display; full values remain in exports. See [release notes](RELEASE_NOTES.md) for the v1.3.0 upgrade package.
+Reports are snapshots, not importable saved cases or cryptographic evidence records. Collection timezone is analyst context and does not reinterpret dates. Notes are retained across filters, sorting, and re-analysis within the dataset, but starting a new dataset clears the case; export first. Row inspectors shorten individual values above 20,000 characters for display; full values remain in exports.
 
 Mistyped passwords, stale service credentials, account management, group changes, services, PowerShell activity, and cleared logs can all be legitimate in the right context. Validate important findings with authorised sources before escalating.
 
