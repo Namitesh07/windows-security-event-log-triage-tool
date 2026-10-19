@@ -39,6 +39,10 @@ Analysis happens entirely in the browser. The tool does not upload the selected 
 - **Transparent scope:** missing or ambiguous timestamps and missing identity/host/source fields are reported as correlation coverage gaps. These records remain visible as evidence.
 - **CSV guardrails:** common Event ID header names are accepted; quoted commas, quotes, and multiline messages are supported; malformed quoting and inconsistent row widths report the affected row.
 - **Local practice cases:** all demo names and hosts are fictional; example IP addresses use documentation ranges reserved for examples.
+- **Report controls:** sort events and findings, select 25/50/100/250 events per page, and navigate paged findings and timelines. Clear filters within one finding or return to the whole dataset.
+- **Portable reports:** download JSON, findings CSV, or events CSV for the entire dataset or current evidence/filters. Exports span all matching pages and include analysis provenance. JSON preserves source strings; CSV guards formula-like cells for spreadsheet review.
+- **Case context:** add a case title, analyst, collection timezone, case notes, and a review status/note for each finding. Notes stay in the tab until you export them; no browser storage is used.
+- **Responsive processing:** cancellable Web Worker parsing, analysis, and export when served over HTTP(S). Row inspectors load on demand; large reports use bounded pages. A 2 MB fallback remains available when opening the page directly.
 
 ## How to use it
 
@@ -46,6 +50,7 @@ Analysis happens entirely in the browser. The tool does not upload the selected 
 2. In Windows Event Viewer, export the event records you are authorised to inspect as a CSV file.
 3. Choose the CSV, review parsing feedback, adjust the correlation thresholds/windows if needed, and select **Analyse events**.
 4. Open **View supporting events** on a finding. Inspect the original CSV rows, matched fields, and scoring breakdown; use **Back to finding** to continue the review.
+5. Sort and filter the evidence, add case or finding notes, then choose an export scope and download JSON or CSV. Use **Entire dataset → Download JSON report** to keep all case notes, including notes from findings removed by a settings change.
 
 **Tip:** The tool needs a recognisable **Event ID** column. CSV headers vary between Windows versions and locales, so common variants such as **Event ID**, **EventID**, and **event_id** are recognised. ISO dates are parsed explicitly. Timed correlations require a timestamp with a time of day and a consistent timezone basis; ambiguous numeric dates are excluded from those rules. Raw **.evtx** files are not supported in version 1.
 
@@ -54,6 +59,7 @@ Analysis happens entirely in the browser. The tool does not upload the selected 
 The output is an **explainable triage signal**, not a probability that an event is malicious. Priority is derived consistently from each finding's points: **High 60+**, **Medium 30–59**, **Low 1–29**, **Informational 0**. Shared evidence can appear in several findings; points are not summed into a dataset risk score.
 
 See the [detection and logging guide](docs/detections.md) for exact rule conditions, false-positive context, supported Event IDs, and audit requirements.
+See the [report and case guide](docs/reports.md) for export fields, scope, note retention, and file-size limits.
 
 | Result | What it means |
 | --- | --- |
@@ -67,9 +73,10 @@ Use the results to decide what to inspect next: confirm the account owner, expec
 
 - CSV reading and analysis take place in the browser with the local File API.
 - No backend, database, account, analytics, telemetry, AI service, external API, or tracking is used.
-- The page makes no application network requests; fonts and styling use local system resources.
-- Selected CSV data stays in the active browser page and is not intentionally persisted by the app.
+- The page loads its own app assets, including worker scripts, from the same origin. No CSV, case-note, telemetry, or API uploads are made; fonts and styling use local system resources.
+- CSV data and case notes stay in the active browser page. The app does not use localStorage, IndexedDB, cookies, or automatic persistence. Downloaded reports are saved only when you request an export.
 - Event values are rendered as text after escaping; the app does not inject event data as executable HTML.
+- Treat downloaded reports as sensitive as the original logs; they can include account names, hostnames, commands, original messages, and analyst notes.
 
 Only analyse systems and logs you own or are authorised to investigate.
 
@@ -84,9 +91,17 @@ cd windows-security-event-log-triage-tool
 
 Open **index.html** in a modern browser, then load one of the CSV files in **samples/** or choose your own authorised Windows Event Viewer CSV export. To run the parser and detection tests, install Node.js 18 or later and run **npm test** from the repository folder.
 
+Opening `index.html` directly uses small-file mode (up to **2 MB**). For background processing of CSV files up to **25 MB**, use GitHub Pages or serve the folder locally, for example with Python 3:
+
+~~~bash
+python3 -m http.server 8000 --bind 127.0.0.1
+~~~
+
+Then open `http://127.0.0.1:8000`. Keep all JavaScript files beside `index.html`, including `report.js`, `task-runner.js`, and `worker.js`. Processing remains local. Large or complex datasets can still consume significant memory; progress reports processing stages, and **Cancel operation** stops the active worker.
+
 ## Test the analysis logic
 
-The project includes a dependency-free Node.js test suite for CSV parsing, timestamp handling, event-field extraction, detection rules, and all five checked-in sample datasets.
+The project includes a dependency-free Node.js test suite for CSV parsing, timestamps, extraction, detection rules, all five samples, report scopes/sorting, export safety, note retention, UI flows, and the actual worker script using Node worker threads and structured cloning. UI flow tests use a lightweight DOM harness; they are not a full browser accessibility audit.
 
 ~~~bash
 npm test
@@ -107,6 +122,8 @@ This project is an educational aid for deciding what to inspect next. It does **
 
 English Event Viewer message sections and common structured CSV field names are supported. Localised message labels may not be extracted; raw rows are still available. Timezone-free timestamps are treated as browser-local wall times, so confirm collection context before interpreting them. PowerShell fragments are inspected separately and are not automatically reassembled. Raw task XML is retained for review.
 
+Reports are snapshots, not importable saved cases or cryptographic evidence records. Collection timezone is analyst context and does not reinterpret dates. Notes are retained across filters, sorting, and re-analysis within the dataset, but starting a new dataset clears the case; export first. Row inspectors shorten individual values above 20,000 characters for display; full values remain in exports. See [release notes](RELEASE_NOTES.md) for the v1.3.0 upgrade package.
+
 Mistyped passwords, stale service credentials, account management, group changes, services, PowerShell activity, and cleared logs can all be legitimate in the right context. Validate important findings with authorised sources before escalating.
 
 ## Built with
@@ -120,3 +137,4 @@ Created by **Namitesh Pandey** for learning and portfolio use.
 **Investigate the evidence. Keep the human in the loop.**
 
 Repository shared for portfolio and educational viewing. No licence is granted at this time.
+
