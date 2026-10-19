@@ -8,14 +8,18 @@ const root = path.join(__dirname,'..');
 function app() {
   const markup=fs.readFileSync(path.join(root,'index.html'),'utf8');
   const elements=new Map(), buttons=[];
-  const document={activeElement:null};
+  const downloads=[], urls=new Map(), windowEvents={};
+  const document={activeElement:null,body:{appendChild(){}}};
   class Element {
-    constructor(id='') { this.id=id; this.value='';this.hidden=false;this.disabled=false;this.listeners={};this.dataset={};this.files=[];this._html='';this.textContent='';this.classList={toggle(){},add(){},remove(){}}; }
+    constructor(id='') { this.id=id; this.value='';this.hidden=false;this.disabled=false;this.listeners={};this.dataset={};this.attributes={};this.files=[];this._html='';this.textContent='';this.classList={toggle(){},add(){},remove(){}}; }
     set innerHTML(value) {
       this._html=String(value);
       for (const match of this._html.matchAll(/\bid="([^"]+)"/g)) if (!elements.has(match[1])) elements.set(match[1],new Element(match[1]));
     }
     get innerHTML(){return this._html;}
+    setAttribute(name,value){this.attributes[name]=value;}
+    click(){if(this.href)downloads.push({name:this.download,blob:urls.get(this.href)});}
+    remove(){}
     addEventListener(type,callback){(this.listeners[type] ||= []).push(callback);}
     async trigger(type,event={}){for(const callback of this.listeners[type]||[]) await callback({target:this,...event});}
     dispatchEvent(event){return this.trigger(event.type);}
@@ -29,12 +33,17 @@ function app() {
   document.getElementById=id=>elements.get(id)||null;
   document.querySelectorAll=selector=>selector==='[data-sample]'?buttons:[];
   document.querySelector=selector=>selector==='.demo-details'?demo:null;
-  const fakeWindow={};
-  const context=vm.createContext({window:fakeWindow,document,console,Event:class{constructor(type){this.type=type;}},DataTransfer:class{}});
-  vm.runInContext(fs.readFileSync(path.join(root,'analysis.js'),'utf8'),context);
-  vm.runInContext(fs.readFileSync(path.join(root,'script.js'),'utf8'),context);
+  document.createElement=()=>new Element();
+  const fakeWindow={confirm:()=>true,addEventListener:(type,handler)=>{windowEvents[type]=handler;}};
+  const testTimeout=(callback,delay)=>{const timer=setTimeout(callback,delay);if(delay>1000)timer.unref();return timer;};
+  const context=vm.createContext({window:fakeWindow,document,console,Blob,setTimeout:testTimeout,clearTimeout,
+    URL:{createObjectURL:blob=>{const url='blob:'+urls.size;urls.set(url,blob);return url;},revokeObjectURL:url=>urls.delete(url)},
+    Event:class{constructor(type){this.type=type;}}});
+  for(const file of ['analysis.js','report.js','task-runner.js','script.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context);
   return {
-    el:id=>elements.get(id), document,
+    el:id=>elements.get(id), document, downloads, window:fakeWindow, windowEvents,
+    load:async text=>{elements.get('csv-file').files=[{name:'case.csv',size:Buffer.byteLength(text),text:async()=>text}];await elements.get('csv-file').trigger('change');await elements.get('analyze-button').trigger('click');},
+    inspect:async uid=>{const body=new Element(),details={dataset:{inspect:uid},open:true,querySelector:()=>body};await elements.get('event-rows').trigger('toggle',{target:details});return body.innerHTML;},
     sample:async key=>{await buttons.find(button=>button.dataset.sample===key).trigger('click');await elements.get('analyze-button').trigger('click');},
     evidence:async id=>elements.get('findings').trigger('click',{target:{closest:()=>({dataset:{evidence:id}})}})
   };
@@ -60,7 +69,7 @@ test('finding evidence clears conflicting filters, shows exact rows, and returns
   assert.equal(ui.el('event-search').value,'');
   assert.equal(ui.el('evidence-scope').hidden,false);
   assert.deepEqual([...ui.el('event-rows').innerHTML.matchAll(/data-event-uid="([^"]+)"/g)].map(match=>match[1]),['event-7','event-8']);
-  assert.ok(ui.el('event-rows').innerHTML.includes('All original CSV columns'));
+  assert.ok((await ui.inspect('event-7')).includes('All original CSV columns'));
   await ui.el('evidence-back').trigger('click');
   assert.equal(ui.document.activeElement.id,'finding-'+id);
   await ui.el('show-all-events').trigger('click');
@@ -84,13 +93,14 @@ test('event paging reaches rows beyond the first page and original HTML-like val
   await ui.el('csv-file').trigger('change');await ui.el('analyze-button').trigger('click');
   assert.equal([...ui.el('event-rows').innerHTML.matchAll(/data-event-uid=/g)].length,100);
   assert.equal(ui.el('event-rows').innerHTML.includes('<img src=x'),false);
-  assert.ok(ui.el('event-rows').innerHTML.includes('&lt;img src=x'));
+  assert.ok((await ui.inspect('event-1')).includes('&lt;img src=x'));
   await ui.el('page-next').trigger('click');
   assert.equal([...ui.el('event-rows').innerHTML.matchAll(/data-event-uid=/g)].length,5);
   assert.ok(ui.el('page-label').textContent.includes('101–105'));
   ui.el('csv-file').files=[{name:'invalid.evtx',size:10,text:async()=>''}];
   await ui.el('csv-file').trigger('change');
-  assert.equal(ui.el('report').hidden,true);assert.equal(ui.el('analyze-button').disabled,true);
+  assert.equal(ui.el('report').hidden,false);assert.equal(ui.el('analyze-button').disabled,false);
+  assert.ok(ui.el('parse-status').textContent.includes('.csv extension'));
 });
 test('a slow file read cannot overwrite a newly chosen demo', async () => {
   const ui=app();let resolve;
@@ -102,4 +112,85 @@ test('a slow file read cannot overwrite a newly chosen demo', async () => {
   assert.ok(ui.el('file-name').textContent.includes('Correlation and Policy Lab'));
   assert.ok(ui.el('findings').innerHTML.includes('AUTH_PASSWORD_SPRAY'));
 });
+
+test('page size, first/last navigation, and time sorting reach all events in the chosen order',async()=>{
+  const ui=app();
+  await ui.load(['Event ID,Timestamp,Message',...Array.from({length:205},(_,i)=>'9999,'+new Date(Date.UTC(2026,9,19,0,i)).toISOString()+',row '+i)].join('\n'));
+  ui.el('page-size').value='25';await ui.el('page-size').trigger('change');
+  assert.equal([...ui.el('event-rows').innerHTML.matchAll(/data-event-uid=/g)].length,25);
+  await ui.el('page-last').trigger('click');assert.ok(ui.el('page-label').textContent.includes('201–205'));
+  ui.el('event-sort').value='time-desc';await ui.el('event-sort').trigger('change');
+  assert.equal(ui.el('event-rows').innerHTML.match(/data-event-uid="([^"]+)"/)[1],'event-205');
+  await ui.el('page-last').trigger('click');await ui.el('page-first').trigger('click');
+  assert.ok(ui.el('page-label').textContent.includes('1–25'));
+});
+test('clearing filters preserves exact evidence scope, while show all removes it',async()=>{
+  const ui=app();await ui.sample('account');
+  const id=ui.el('findings').innerHTML.match(/data-evidence="([^"]+)"/)[1];await ui.evidence(id);
+  ui.el('filter-id').value='1102';await ui.el('filter-id').trigger('input');
+  assert.ok(ui.el('event-rows').innerHTML.includes('No events match'));
+  await ui.el('clear-filters').trigger('click');
+  assert.equal(ui.el('evidence-scope').hidden,false);assert.equal([...ui.el('event-rows').innerHTML.matchAll(/data-event-uid=/g)].length,2);
+  await ui.el('show-all-events').trigger('click');assert.equal(ui.el('evidence-scope').hidden,true);
+});
+test('scoped JSON exports all matching evidence and excludes incomplete findings',async()=>{
+  const ui=app();await ui.sample('mixed');
+  const id=ui.el('findings').innerHTML.match(/data-evidence="([^"]+)"/)[1];await ui.evidence(id);
+  ui.el('export-scope').value='view';await ui.el('export-json').trigger('click');
+  let report=JSON.parse(await ui.downloads.at(-1).blob.text());
+  assert.deepEqual(report.events.map(event=>event.uid),['event-7','event-8']);
+  assert.equal(report.findings.length,1);assert.equal(report.scope.evidenceFindingId,id);
+  ui.el('filter-id').value='4720';await ui.el('filter-id').trigger('input');
+  await ui.el('export-json').trigger('click');report=JSON.parse(await ui.downloads.at(-1).blob.text());
+  assert.equal(report.events.length,1);assert.equal(report.findings.length,0);
+  assert.equal(report.scope.filters.id,'4720');
+});
+test('full exports span every event, finding, and timeline page without depending on the visible page',async()=>{
+  const ui=app();await ui.load('Event ID,Message\n'+Array.from({length:120},()=> '1102,cleared in fictional lab').join('\n'));
+  assert.equal([...ui.el('findings').innerHTML.matchAll(/data-evidence=/g)].length,20);
+  assert.equal([...ui.el('timeline').innerHTML.matchAll(/<li>/g)].length,100);
+  await ui.el('findings-next').trigger('click');assert.ok(ui.el('findings-page').textContent.includes('21–40'));
+  await ui.el('timeline-next').trigger('click');assert.equal([...ui.el('timeline').innerHTML.matchAll(/<li>/g)].length,20);
+  await ui.el('export-json').trigger('click');const report=JSON.parse(await ui.downloads.at(-1).blob.text());
+  assert.equal(report.events.length,120);assert.equal(report.findings.length,120);
+  assert.equal(report.scope.totalEvents,120);assert.ok(ui.downloads.at(-1).name.endsWith('.json'));
+});
+test('case and finding notes survive sorting and settings changes; inactive annotations remain in JSON',async()=>{
+  const ui=app();await ui.sample('account');
+  const id=ui.el('findings').innerHTML.match(/data-evidence="([^"]+)"/)[1];
+  ui.el('case-title').value='Case <review>';await ui.el('case-title').trigger('input');
+  ui.el('case-notes').value='timezone to confirm';await ui.el('case-notes').trigger('input');
+  await ui.el('findings').trigger('input',{target:{dataset:{reviewNote:id},value:'<img src=x> analyst evidence',closest:()=>null}});
+  await ui.el('findings').trigger('change',{target:{dataset:{reviewStatus:id},value:'Investigating',closest:()=>null}});
+  ui.el('finding-sort').value='title';await ui.el('finding-sort').trigger('change');
+  assert.ok(ui.el('findings').innerHTML.includes('&lt;img src=x&gt;'));
+  ui.el('account-window').value='1';await ui.el('account-window').trigger('change');
+  assert.ok(ui.el('case-status').textContent.includes('retained in JSON'));
+  await ui.el('export-json').trigger('click');const report=JSON.parse(await ui.downloads.at(-1).blob.text());
+  assert.equal(report.case.title,'Case <review>');assert.equal(report.settings.accountWindowMinutes,1);
+  assert.equal(report.annotations[0].note,'<img src=x> analyst evidence');assert.equal(report.annotations[0].presentInExport,false);
+  assert.equal(report.annotations[0].status,'Investigating');
+});
+test('replacing a case can be declined and failed/cancelled loads preserve its data and notes',async()=>{
+  const ui=app();await ui.sample('advanced');
+  ui.el('case-notes').value='keep this';await ui.el('case-notes').trigger('input');
+  ui.window.confirm=()=>false;await ui.sample('normal');
+  assert.ok(ui.el('file-name').textContent.includes('Correlation and Policy Lab'));assert.equal(ui.el('case-notes').value,'keep this');
+  ui.window.confirm=()=>true;
+  ui.el('csv-file').files=[{name:'bad.csv',size:30,text:async()=> 'no valid headers\nbad'}];await ui.el('csv-file').trigger('change');
+  assert.ok(ui.el('parse-status').textContent.includes('Event ID'));assert.equal(ui.el('case-notes').value,'keep this');
+  let resolve;ui.el('csv-file').files=[{name:'slow.csv',size:30,text:()=>new Promise(done=>{resolve=done;})}];
+  const pending=ui.el('csv-file').trigger('change');await ui.el('cancel-task').trigger('click');await pending;
+  resolve('Event ID,Message\n9999,stale');
+  assert.equal(ui.el('report').hidden,false);assert.equal(ui.el('case-notes').value,'keep this');
+  assert.ok(ui.el('file-name').textContent.includes('Correlation and Policy Lab'));assert.equal(ui.el('cancel-task').hidden,true);
+});
+test('CSV downloads include notes and settings and protect formula-like analyst input',async()=>{
+  const ui=app();await ui.sample('mixed');
+  ui.el('case-notes').value='=SUM(1,1)';await ui.el('case-notes').trigger('input');
+  await ui.el('export-findings').trigger('click');const csv=await ui.downloads.at(-1).blob.text();
+  assert.ok(csv.includes('"\'=SUM(1,1)"'));assert.ok(csv.includes('Effective settings'));
+  await ui.el('export-events').trigger('click');assert.ok((await ui.downloads.at(-1).blob.text()).includes('Original CSV fields (JSON)'));
+});
+
 
