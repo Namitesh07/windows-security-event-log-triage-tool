@@ -880,10 +880,47 @@ td:nth-child(2) {
 footer {
   display:flex;
   justify-content:space-between;
+  align-items:flex-end;
   gap:20px;
   color:#b7adc5;
   font-size:.59rem;
   padding:28px 2px 0;
+}
+
+.footer-context {
+  display:grid;
+  gap:6px;
+  max-width:82ch;
+}
+
+.creator-credit {
+  flex:0 0 auto;
+  max-width:100%;
+  padding:14px 18px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:linear-gradient(135deg,#271a33,#14101c);
+  text-align:right;
+}
+
+.creator-credit h2 {
+  margin:0 0 5px;
+  font:inherit;
+  font-size:.58rem;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.13em;
+}
+
+.creator-credit p {
+  margin:0;
+  font-family:'Segoe UI',Arial,sans-serif;
+  font-size:1rem;
+  font-weight:650;
+  line-height:1.35;
+  letter-spacing:0;
+  color:var(--pink);
+  overflow-wrap:anywhere;
 }
 
 .noscript {
@@ -999,7 +1036,11 @@ footer {
   }
   footer {
     flex-direction:column;
-    gap:5px;
+    align-items:stretch;
+    gap:16px;
+  }
+  .creator-credit {
+    align-self:flex-end;
   }
 }
 
@@ -1550,7 +1591,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     background:Canvas;
     color:CanvasText;
   }
-  .topbar,.workspace-card,.panel,.education-card,.howto-card,.metric,.finding-card,.drop-zone,.privacy-note,.processing-bar {
+  .topbar,.workspace-card,.panel,.education-card,.howto-card,.metric,.finding-card,.drop-zone,.privacy-note,.processing-bar,.creator-credit {
     background:Canvas;
     border-color:CanvasText;
     box-shadow:none;
@@ -1562,6 +1603,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     box-shadow:none;
   }
   .hero h1 em {
+    color:CanvasText;
+  }
+  .creator-credit p {
     color:CanvasText;
   }
   .severity {

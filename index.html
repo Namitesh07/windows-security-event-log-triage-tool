@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#08070e">
   <title>Windows Security Event Log Triage Tool</title>
-  <link rel="stylesheet" href="styles.css?v=20261019-stacked-guides">
+  <link rel="stylesheet" href="styles.css?v=20261022-creator-credit">
   <script src="analysis.js" defer></script>
   <script src="report.js" defer></script>
   <script src="task-runner.js" defer></script>
@@ -135,7 +135,16 @@
     </section>
 
     <section class="howto-card"><p class="eyebrow">COLLECT THE EVIDENCE</p><h2>Export events from Windows Event Viewer</h2><ol><li>Open <strong>Event Viewer</strong> and select <strong>Windows Logs → Security</strong>.</li><li>Choose or filter the events you want to review.</li><li>Use <strong>Save All Events As…</strong> and choose <strong>CSV</strong> when available.</li><li>Upload the exported CSV above. If your Windows version offers a different export flow, follow its CSV export option and confirm the result includes an Event ID column.</li></ol></section>
-    <footer><span>FIELDNOTES · WINDOWS SECURITY EVENT LOG TRIAGE TOOL</span><span>Educational use · Analyse only systems you own or are authorised to investigate.</span></footer>
+    <footer>
+      <div class="footer-context">
+        <span>FIELDNOTES · WINDOWS SECURITY EVENT LOG TRIAGE TOOL</span>
+        <span>Educational use · Analyse only systems you own or are authorised to investigate.</span>
+      </div>
+      <section class="creator-credit" aria-labelledby="creator-title">
+        <h2 id="creator-title">Created by</h2>
+        <p>Namitesh Pandey</p>
+      </section>
+    </footer>
   </main>
   <div id="processing-bar" class="processing-bar" role="region" aria-label="Current operation" hidden><span id="task-label" aria-hidden="true"></span><progress id="task-progress" aria-label="Processing" hidden></progress><button class="button button-secondary" id="cancel-task" type="button" hidden>Cancel operation</button></div>
   <noscript><p class="noscript">JavaScript must be enabled in your browser for local CSV analysis.</p></noscript>
