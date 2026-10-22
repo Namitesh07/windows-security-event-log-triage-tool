@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.0",
+  "id": "lab-tuning",
+  "version": "1.0.0",
+  "rules": {
+    "AUTH_SUCCESS_AFTER_FAILURES": {
+      "enabled": true,
+      "points": [
+        20,
+        20
+      ]
+    },
+    "TASK_DELETED": {
+      "enabled": false
+    }
+  }
+}

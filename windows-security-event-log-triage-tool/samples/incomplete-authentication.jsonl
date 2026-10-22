@@ -1,0 +1,2 @@
+{"Id":4625,"TimeCreated":"","MachineName":"DC-LAB","EventData":{"TargetUserName":"learner","IpAddress":"192.0.2.10"},"Message":"Fictional missing-time example."}
+{"Id":4624,"TimeCreated":"2026-10-22T10:00:00Z","MachineName":"DC-LAB","EventData":{"TargetUserName":"learner","IpAddress":"192.0.2.10"}}

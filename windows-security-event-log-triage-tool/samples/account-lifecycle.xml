@@ -1,0 +1,4 @@
+<Events>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System><EventID>4720</EventID><TimeCreated SystemTime="2026-10-22T11:00:00Z"/><Computer>DC-LAB</Computer></System><EventData><Data Name="TargetUserName">temp-lab</Data><Data Name="TargetDomainName">NORTHWIND</Data><Data Name="TargetSid">S-1-5-21-1-2-3-1007</Data><Data Name="SubjectUserName">opsadmin</Data></EventData></Event>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System><EventID>4732</EventID><TimeCreated SystemTime="2026-10-22T11:04:00Z"/><Computer>DC-LAB</Computer></System><EventData><Data Name="MemberName">NORTHWIND\temp-lab</Data><Data Name="MemberSid">S-1-5-21-1-2-3-1007</Data><Data Name="TargetUserName">Administrators</Data><Data Name="TargetSid">S-1-5-32-544</Data><Data Name="SubjectUserName">opsadmin</Data></EventData></Event>
+</Events>
