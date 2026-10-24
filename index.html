@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#08070e">
   <title>Windows Security Event Log Triage Tool</title>
-  <link rel="stylesheet" href="styles.css?v=20261022-creator-credit">
+  <link rel="stylesheet" href="styles.css?v=20261024-root-v140">
+  <script src="rules.generated.js" defer></script>
+  <script src="rule-profiles.js" defer></script>
   <script src="analysis.js" defer></script>
+  <script src="inputs.js" defer></script>
   <script src="report.js" defer></script>
   <script src="task-runner.js" defer></script>
   <script src="script.js" defer></script>
@@ -31,20 +34,20 @@
 
     <section class="workspace-card" aria-labelledby="ingest-title">
       <div class="section-heading">
-        <div><p class="eyebrow">01 / OPEN A CASE</p><h2 id="ingest-title">Bring in a Windows CSV export</h2></div>
-        <span class="step-chip">CSV ONLY · NO INSTALL</span>
+        <div><p class="eyebrow">01 / OPEN A CASE</p><h2 id="ingest-title">Bring in a Windows event export</h2></div>
+        <span class="step-chip">CSV · XML · JSON · JSONL</span>
       </div>
-      <p class="muted" id="file-help">Export security events from Event Viewer as CSV, then choose a file or drop it below. Raw <code>.evtx</code> files are not supported. Files up to 25 MB use background processing when served over HTTP(S). Directly opening this page uses small-file mode (up to 2 MB).</p>
+      <p class="muted" id="file-help">Choose a CSV, Windows Event XML, JSON, or JSON Lines export. Raw <code>.evtx</code> files need local conversion first; see the input guide below. Hosted background mode supports up to 25 MB and 100,000 events. Opening this page directly uses small-file mode (up to 2 MB).</p>
       <label class="drop-zone" id="drop-zone" for="csv-file">
-        <input id="csv-file" type="file" accept=".csv,text/csv" aria-label="Choose a Windows event CSV" aria-describedby="file-help">
+        <input id="csv-file" type="file" accept=".csv,.xml,.json,.jsonl,.ndjson,text/csv,application/json,application/xml" aria-label="Choose a Windows event export" aria-describedby="file-help">
         <span class="upload-icon" aria-hidden="true">↑</span>
-        <strong>Choose a CSV file or drag it here</strong>
+        <strong>Choose an event export or drag it here</strong>
         <span class="muted small">Your file stays in this browser tab.</span>
         <span id="file-name" class="file-name" aria-live="polite">No file selected</span>
       </label>
       <div class="action-row">
         <button class="button button-primary" id="analyze-button" type="button" disabled>Analyse events <span aria-hidden="true">→</span></button>
-        <span id="parse-status" class="status-text" role="status" aria-live="polite">Choose a CSV to begin.</span>
+        <span id="parse-status" class="status-text" role="status" aria-live="polite">Choose an event export to begin.</span>
       </div>
       <details class="demo-details">
         <summary>Try a fictional demo dataset</summary>
@@ -68,6 +71,13 @@
       <button class="button button-quiet" id="reset-settings" type="button">Reset defaults</button>
     </section>
     <p class="muted threshold-note">These educational defaults need tuning for your environment. Timed correlations require a usable timestamp and matching identity and host context.</p>
+    <details class="panel rule-panel">
+      <summary>Detection rules and optional tuning profile</summary>
+      <p class="muted small">Profiles can disable rules or adjust their priority points. Matching conditions stay fixed. The active profile and effective points are included in report exports.</p>
+      <div class="action-row"><label for="rule-profile-file">Load a rule profile (JSON, up to 64 KB)<input id="rule-profile-file" type="file" accept=".json,application/json"></label><button id="reset-rule-profile" type="button" class="button button-quiet">Use default rules</button><button id="download-rule-profile" type="button" class="button button-secondary">Download active profile</button></div>
+      <p id="rule-profile-status" role="status" class="muted small"></p>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Effective detection rules"><table><caption class="sr-only">Effective rules, enabled state, and priority points</caption><thead><tr><th scope="col">Rule</th><th scope="col">Enabled</th><th scope="col">Points</th></tr></thead><tbody id="rule-catalog"></tbody></table></div>
+    </details>
 
     <section id="report" class="report-section" aria-labelledby="report-title" hidden>
       <div class="report-title-row"><div><p class="eyebrow">02 / TRIAGE REPORT</p><h2 id="report-title" tabindex="-1">What stands out</h2></div><div id="dataset-tag" class="step-chip">UPLOADED DATA</div></div>
@@ -112,12 +122,12 @@
           <label>Exact source IP<input id="filter-ip" type="search" placeholder="All source IPs"></label>
           <label>Event type<select id="filter-type"><option value="">All event types</option></select></label>
         </div>
-        <div class="view-controls"><label for="event-sort">Sort events<select id="event-sort"><option value="csv">CSV row order</option><option value="time-asc">Time: oldest first</option><option value="time-desc">Time: newest first</option><option value="priority">Highest review priority</option><option value="id">Event ID</option><option value="account">Account</option><option value="source">Source</option></select></label><label for="page-size">Events per page<select id="page-size"><option>25</option><option>50</option><option selected>100</option><option>250</option></select></label></div>
+        <div class="view-controls"><label for="event-sort">Sort events<select id="event-sort"><option value="csv">Source record order</option><option value="time-asc">Time: oldest first</option><option value="time-desc">Time: newest first</option><option value="priority">Highest review priority</option><option value="id">Event ID</option><option value="account">Account</option><option value="source">Source</option></select></label><label for="page-size">Events per page<select id="page-size"><option>25</option><option>50</option><option selected>100</option><option>250</option></select></label></div>
         <p class="muted small" id="table-help">Scroll within the table to inspect all columns. Sorting by time keeps unparsed timestamps last. Open a row to load its original evidence.</p>
         <div class="table-wrap" role="region" aria-labelledby="events-title" aria-describedby="table-help" tabindex="0"><table><caption class="sr-only">Windows event evidence in the selected scope and sort order</caption><thead><tr><th scope="col">Time</th><th scope="col">ID</th><th scope="col">Review priority</th><th scope="col">Account</th><th scope="col">Source</th><th scope="col">What happened</th></tr></thead><tbody id="event-rows"></tbody></table></div>
         <div class="table-pager"><button class="button button-quiet" id="page-first" type="button">First</button><button class="button button-quiet" id="page-prev" type="button">Previous events</button><span id="page-label" role="status"></span><button class="button button-quiet" id="page-next" type="button">Next events</button><button class="button button-quiet" id="page-last" type="button">Last</button></div>
       </div>
-      <div class="timeline-panel panel"><div class="panel-heading"><div><p class="eyebrow">SEQUENCE</p><h3 id="timeline-title" tabindex="-1">Noteworthy activity timeline</h3></div></div><p class="muted small">Parsed timestamps are shown first; unparsed times follow in CSV row order.</p><ol id="timeline" class="timeline-list"></ol><div class="table-pager"><button class="button button-quiet" id="timeline-prev" type="button">Previous activity</button><span id="timeline-page" role="status"></span><button class="button button-quiet" id="timeline-next" type="button">Next activity</button></div></div>
+      <div class="timeline-panel panel"><div class="panel-heading"><div><p class="eyebrow">SEQUENCE</p><h3 id="timeline-title" tabindex="-1">Noteworthy activity timeline</h3></div></div><p class="muted small">Parsed timestamps are shown first; unparsed times follow source record order.</p><ol id="timeline" class="timeline-list"></ol><div class="table-pager"><button class="button button-quiet" id="timeline-prev" type="button">Previous activity</button><span id="timeline-page" role="status"></span><button class="button button-quiet" id="timeline-next" type="button">Next activity</button></div></div>
       <p class="scoring-note">Investigation score is an explainable educational prioritisation aid, not a probability of compromise.</p>
     </section>
 
@@ -134,7 +144,7 @@
       </article>
     </section>
 
-    <section class="howto-card"><p class="eyebrow">COLLECT THE EVIDENCE</p><h2>Export events from Windows Event Viewer</h2><ol><li>Open <strong>Event Viewer</strong> and select <strong>Windows Logs → Security</strong>.</li><li>Choose or filter the events you want to review.</li><li>Use <strong>Save All Events As…</strong> and choose <strong>CSV</strong> when available.</li><li>Upload the exported CSV above. If your Windows version offers a different export flow, follow its CSV export option and confirm the result includes an Event ID column.</li></ol></section>
+    <section class="howto-card"><p class="eyebrow">COLLECT THE EVIDENCE</p><h2>Choose an event export format</h2><ol><li>For CSV, export selected events from Windows Event Viewer with an Event ID and timestamp column.</li><li>For XML, use Windows Event XML containing one <code>Event</code> or an <code>Events</code> collection. Named EventData fields provide the best extraction coverage.</li><li>For JSON or JSON Lines, export event objects with an ID, timestamp, host, and available message or named EventData fields.</li><li>For an existing EVTX file, <a href="tools/Export-TriageEvents.ps1" download>download the local PowerShell converter</a>, review it, and use its XML output. The original EVTX stays on your computer.</li></ol><p class="muted small">See the README and input-format guide in the project source for examples. All sample identities, hosts, and network addresses are fictional.</p></section>
     <footer>
       <div class="footer-context">
         <span>FIELDNOTES · WINDOWS SECURITY EVENT LOG TRIAGE TOOL</span>

@@ -2,10 +2,10 @@
 
 ## Review the report
 
-- Event sorting supports CSV row order, oldest/newest time, highest review priority, Event ID, account, and source. Unparsed timestamps remain last in either time direction; equal times keep CSV order.
+- Event sorting supports source record order, oldest/newest time, highest review priority, Event ID, account, and source. Unparsed timestamps remain last in either time direction; equal times keep input order.
 - Findings can be sorted by priority, newest activity (last dated evidence), oldest activity (first dated evidence), or title. Priority is independent of the analyst's review status.
 - Events use 25, 50, 100, or 250 rows per page; findings use 20 per page; the timeline uses 100. First/last event controls reach the ends without stepping through every page.
-- Search matches original CSV values and the event label. Source IP filtering is an exact match. Filters combine with the active finding's evidence.
+- Search matches source/adapter field values and the event label. Source IP filtering is an exact match. Filters combine with the active finding's evidence.
 - **Clear filters in this evidence** preserves the finding scope. **Show all events / clear filters** removes both scope and filters. Sorting and paging do not change detection results.
 - Inspectors load original fields when opened. Individual displayed values above 20,000 characters are shortened, but exports keep their full content.
 
@@ -22,7 +22,7 @@ Review statuses are analyst labels, not new detections or changes to scoring. Co
 
 Notes remain in memory for the current dataset across filters, paging, sorting, and setting changes. A finding's identity is its rule plus supporting event IDs. If a settings change replaces or removes that finding, its existing annotation is retained separately and included in an **Entire dataset** JSON snapshot. Notes are not automatically reassigned to a new finding with different evidence.
 
-Loading another CSV or demo starts a new case. Unsaved notes trigger a confirmation before replacement and a browser navigation warning where supported. A failed or cancelled load preserves the old case. No localStorage, IndexedDB, cookies, or autosave is used. Download an entire-dataset JSON report before leaving; verify that the browser saved the file. Browser navigation warnings and download initiation are not a guarantee of storage.
+Loading another event file or demo starts a new case. Unsaved notes trigger a confirmation before replacement and a browser navigation warning where supported. A failed or cancelled load preserves the old case. Rule-profile changes retain notes; annotations for removed findings remain in the full JSON report. No localStorage, IndexedDB, cookies, or autosave is used. Download an entire-dataset JSON report before leaving; verify that the browser saved the file. Browser navigation warnings and download initiation are not a guarantee of storage.
 
 Limits: case title 200 characters; analyst and timezone 120 each; case notes 10,000; each finding note 4,000. These limits affect analyst input only, not source evidence.
 
@@ -39,19 +39,27 @@ Case context is included in either scope. JSON coverage and parsing diagnostics 
 
 | Format | Included information |
 | --- | --- |
-| JSON report | Schema/tool/rule versions; export and analysis times; source filename, byte size and available modification time; case context; effective analysis settings; browser timezone and interpretation; scope; diagnostics/coverage; rule catalog and score contributions; findings linked by event UID; review annotations; all normalized events and original CSV fields |
-| Findings CSV | Versions/times/source/scope, case context and notes, effective settings, rule/finding IDs, priority and points, review status/note, supporting UIDs/CSV rows, matched values, contributions, explanations and next steps |
-| Events CSV | Versions/source/scope, event UIDs/CSV rows, original and parsed timestamps, timezone basis/status, review priority and Windows level, identity/host/source, message, original columns as JSON, case title and effective settings |
+| JSON report | Schema/tool/rule versions; export and analysis times; source filename/size/format/available modification time; case context; effective settings and exact rule profile; timezone context; scope/diagnostics/coverage; resolved rule catalog with enabled state/weights; findings linked by event UID; annotations; normalized events and source/adapter fields |
+| Findings CSV | Existing versions/times/source/scope, case context, settings, IDs, priority/points, review notes, evidence/matched values/contributions/explanations; appended Source locations (JSON) and Rule profile (JSON) |
+| Events CSV | Existing versions/source/scope, event references, timestamps, priority/level, identity/host/source, message, original fields, case/settings; appended Input format, Source record, Source line, and Rule profile (JSON) |
 
 CSV uses UTF-8 with a BOM, CRLF row separators, quoted cells, and doubled embedded quotes. Cells starting with spreadsheet formula characters (`=`, `+`, `-`, `@`), including after whitespace/control prefixes, or starting with a tab/newline are prefixed with an apostrophe. This changes the exported cell representation. Do not strip that protection when opening untrusted data in a spreadsheet. Spreadsheet handling can vary; use JSON when original values must be preserved exactly. Original CSV column order, duplicate header names, and source strings are retained as an array of header/value pairs in JSON.
 
-JSON schema version is `1.0`, tool version is `1.3.0`, and rule version is `2026-10-15` (detection rules are unchanged from v1.2.0). UIDs are local to the loaded dataset; source filename and timestamps are descriptive metadata, not a file hash or integrity proof. JSON is a report snapshot; there is no import/resume feature in this upgrade.
+JSON schema version is `1.1`, tool version is `1.4.0`, and rule version is `2026-10-22`. Default matching conditions and points remain unchanged from v1.3.1. The normalized `ruleProfile` and resolved `ruleCatalog` capture tuning, including disabled rules. Compare the full profile, effective settings, tool version, and timestamp context when comparing results; a profile label alone is insufficient. UIDs are local to the dataset, not a hash or integrity proof. JSON remains a report snapshot without import/resume support.
+
+### Source locations and compatibility
+
+- Each event has `inputFormat`, `sourceRecord` (1-based original record position, including skipped Event IDs), and `sourceLine`. CSV uses the original row-start line; XML uses the Event start line; JSON Lines uses its physical line including preceding blanks. JSON sourceLine is null and its record number identifies the object.
+- Legacy CSV row/rows columns apply only to CSV; they are blank for XML/JSON/JSONL. Use the appended source-location fields for those formats. Internal legacy lineNumber values are not physical JSON lines.
+- CSV keeps original header/value pairs. XML adapters retain `Original Event XML`; JSON adapters retain a serialized `Original JSON record`, preserving property strings but not original whitespace/escape spelling. Extracted XML text normalizes line endings. See [inputs](inputs.md).
+- The legacy events CSV header `Original CSV fields (JSON)` is retained for compatibility; for other formats it contains source/adapter fields, including the preserved original record. New fields are appended rather than inserted into the older column positions.
+- Formula-prefix protection applies to every CSV cell, including serialized source/profile content. Use the JSON report for unaltered evidence strings.
 
 ## Background processing and accessibility
 
 When served over HTTP(S), the app uses a local dedicated Web Worker for parsing, normalization, analysis, and export. The worker loads only the bundled scripts. Processing stages appear in a concise status area; **Cancel operation** terminates the active worker. Older operations cannot overwrite a more recent selection. Report controls are unavailable while a task is active, so a displayed snapshot cannot be edited during replacement.
 
-The input limit is 25 MB. If workers cannot start, or index.html is opened with file://, the app uses a fallback limited to 2 MB and yields before processing. That fallback performs the bounded operation on the main thread and may briefly pause rendering. For larger files, serve the folder locally or use GitHub Pages. Worker processing reduces UI blocking; it is not streaming ingestion and can still use substantial memory. Export size may exceed source size because it includes normalized fields and provenance. For very large or repetitive evidence, export a narrower collection time range.
+The input limit is 25 MB and 100,000 accepted events. If workers cannot start, or index.html is opened with file://, the app uses a fallback limited to 2 MB and yields before processing. That fallback performs the bounded operation on the main thread and may briefly pause rendering. For larger files, serve the folder locally or use GitHub Pages. Worker processing reduces UI blocking; it is not streaming ingestion and can still use substantial memory. Export size may exceed source size because it includes normalized fields, original XML/JSON, profiles, and provenance. For very large or repetitive evidence, export a narrower collection time range.
 
 All controls have visible labels or accessible names. The file chooser has a visible focus outline, the table region can be focused and scrolled with the keyboard, result headings receive focus after navigation, and short status messages announce changes without making the entire report a live region. Responsive layouts preserve the native evidence table in a labelled horizontal scroll area. Reduced-motion and forced-colors preferences are supported. Automated flow tests are not a substitute for manual screen-reader and device testing.
 

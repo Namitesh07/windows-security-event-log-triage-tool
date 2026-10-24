@@ -30,16 +30,16 @@
           }
           onProgress('Processing locally (small-file mode)…');
           try {
-            const text = operation === 'parse' ? (payload.file ? await payload.file.text() : payload.text) : '';
+            const text = operation === 'parse' ? (payload.file ? await root.EventTriageInputs.readFileText(payload.file) : payload.text) : '';
             // Yield before the bounded fallback so progress and cancellation can be presented.
             await new Promise(done => setTimeout(done, 0));
             if (this.active !== task) return;
             let result;
             if (operation === 'parse') {
-              result = root.EventTriageAnalysis.normalizeEvents(root.EventTriageAnalysis.parseCsv(text));
+              result = root.EventTriageInputs.parseInput(text,payload.format || 'csv');
               for (const event of result.events) event._searchText = root.EventTriageReports.searchText(event);
             } else if (operation === 'analyze') {
-              result = root.EventTriageAnalysis.analyze(payload.events, payload.settings)
+              result = root.EventTriageAnalysis.analyze(payload.events, payload.settings, payload.ruleProfile)
                 .map(({ events, ...finding }) => ({ ...finding, eventUids: events.map(event => event.uid) }));
             } else {
               const report = root.EventTriageReports.createReport(payload.input);

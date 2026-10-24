@@ -43,10 +43,12 @@
   const { normalizeSettings, DEFAULT_SETTINGS, severityOrder, eventSort,
     labelById, eventCatalog, logonTypes, accountDisplay, correlationCoverage } = window.EventTriageAnalysis;
   const reports = window.EventTriageReports;
+  const inputs = window.EventTriageInputs, profiles = window.EventTriageProfiles;
   const runner = new window.EventTriageTasks.TaskRunner();
   const ids = ['csv-file','file-name','analyze-button','parse-status','drop-zone','failure-threshold','auth-window','spray-threshold','account-window','reset-settings','report','report-title','dataset-tag','summary-banner','coverage-note','metrics','findings','finding-count','finding-sort','findings-prev','findings-next','findings-page','top-accounts','top-failures','common-ids','event-search','filter-id','filter-severity','filter-ip','filter-type','event-rows','visible-count','timeline','timeline-title','timeline-prev','timeline-next','timeline-page','event-panel','events-title','evidence-scope','evidence-title','evidence-back','show-all-events','clear-filters','event-sort','page-size','page-first','page-prev','page-next','page-last','page-label','event-reference','cancel-task','task-progress','settings','case-title','case-analyst','case-timezone','case-notes','case-status','export-scope','export-json','export-findings','export-events','export-status'];
   const els = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
   els['processing-bar'] = document.getElementById('processing-bar'); els['task-label'] = document.getElementById('task-label');
+  for(const id of ['rule-profile-file','reset-rule-profile','download-rule-profile','rule-profile-status','rule-catalog'])els[id]=document.getElementById(id);
   const settingIds = { failureThreshold: 'failure-threshold', authWindowMinutes: 'auth-window', sprayAccountThreshold: 'spray-threshold', accountWindowMinutes: 'account-window' };
   const filterIds = ['event-search','filter-id','filter-severity','filter-ip','filter-type'];
   const caseIds = { title:'case-title', analyst:'case-analyst', collectionTimezone:'case-timezone', notes:'case-notes' };
@@ -57,11 +59,13 @@
   let eventPriorities = new Map(), relatedFindings = new Map(), eventByUid = new Map();
   let diagnostics = {}, source = {}, analysisSettings = DEFAULT_SETTINGS, analyzedAt = null, annotations = Object.create(null);
   let caseContext = reports.normalizeCase(), orderedFindings = [], noteworthy = [], viewCache = null, searchTimer;
+  let currentProfile = profiles.defaultProfile, analysisProfile = profiles.defaultProfile;
 
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   const csvEscape = value => '"' + String(value).replaceAll('"', '""') + '"';
   const makeCsv = rows => [csvHeader, ...rows.map(row => row.map(csvEscape).join(','))].join('\r\n');
   const displayTime = event => (event.timeText || 'Time unavailable').slice(0,500);
+  const sourceLabel = event => event.inputFormat === 'json' ? 'JSON record ' + event.sourceRecord : event.inputFormat === 'xml' ? 'XML line ' + event.sourceLine : event.inputFormat === 'jsonl' ? 'JSON line ' + event.sourceLine : 'CSV row ' + event.lineNumber;
   const preview = value => String(value ?? '').length > 20000 ? String(value).slice(0,20000) + '\n[Preview shortened; full value is preserved in JSON and events CSV.]' : String(value ?? '');
   const pairHtml = (label, value) => '<dt>' + escapeHtml(label) + '</dt><dd>' + escapeHtml(preview(value || 'Not available')) + '</dd>';
   const scrollTo = (element, block = 'start') => element.scrollIntoView({ behavior: 'auto', block });
@@ -82,7 +86,7 @@
     els['task-progress'].hidden = !value; els['cancel-task'].hidden = !value;
     els.report.setAttribute('aria-busy', String(value)); els['drop-zone'].setAttribute('aria-busy', String(value));
     els['analyze-button'].disabled = value || !currentEvents.length;
-    for (const id of [...Object.values(settingIds),'reset-settings','export-json','export-findings','export-events'])
+    for (const id of [...Object.values(settingIds),'reset-settings','rule-profile-file','reset-rule-profile','download-rule-profile','export-json','export-findings','export-events'])
       els[id].disabled = value || (id.startsWith('export-') && !analyzedAt);
   }
   function invalidateView() { viewCache = null; }
@@ -103,20 +107,21 @@
   }
   function cancelTask() {
     taskToken += 1; runner.cancel(); setBusy(false);
-    setStatus('Operation cancelled.' + (currentEvents.length ? ' The previously loaded dataset is still available.' : ' Choose a CSV to begin.'));
+    setStatus('Operation cancelled.' + (currentEvents.length ? ' The previously loaded dataset is still available.' : ' Choose an event export to begin.'));
     if (els['export-status'].textContent === 'Preparing download…') els['export-status'].textContent = 'Download preparation cancelled.';
     els['csv-file'].value = '';
     if (analyzedAt) for (const [key,id] of Object.entries(settingIds)) els[id].value = String(analysisSettings[key]);
+    if(analyzedAt){currentProfile=analysisProfile;renderRuleProfile();}
     els['analyze-button'].focus();
   }
   async function processInput(payload, name, metadata = {}) {
     const token = ++taskToken; runner.cancel();
-    setBusy(true); setStatus('Reading CSV…');
+    setBusy(true); setStatus('Reading event export…');
     try {
       const result = await runner.run('parse', payload, message => { if (token === taskToken) setStatus(message); });
       if (token !== taskToken) return;
       currentEvents = result.events; currentFindings = []; selectedFile = name; diagnostics = result.diagnostics;
-      source = { name, sizeBytes: payload.bytes || payload.file?.size || 0, lastModified: metadata.lastModified || null, loadedAt: new Date().toISOString(), kind: metadata.kind || 'csv' };
+      source = { name, sizeBytes: payload.bytes || payload.file?.size || 0, lastModified: metadata.lastModified || null, loadedAt: new Date().toISOString(), kind: metadata.kind || result.format, format:result.format };
       analyzedAt = null; activeEvidenceId = null; page = findingPage = timelinePage = 0;
       eventByUid = new Map(currentEvents.map(event => [event.uid,event]));
       eventPriorities = new Map(); relatedFindings = new Map();
@@ -126,30 +131,31 @@
       const d = diagnostics, rows = [...d.blankEventIdRows, ...d.invalidEventIdRows].sort((a,b) => a-b);
       const timestampRows = [...d.ambiguousTimestampRows, ...d.invalidTimestampRows, ...d.missingTimestampRows].sort((a,b) => a-b);
       const describe = values => values.slice(0,8).join(', ') + (values.length > 8 ? ' and ' + (values.length - 8) + ' more' : '');
-      setStatus(d.rowsParsed + ' events parsed.' + (rows.length ? ' Skipped unreadable Event IDs in CSV row(s) ' + describe(rows) + '.' : '') +
-        (timestampRows.length ? ' Timestamp review needed in CSV row(s) ' + describe(timestampRows) + '; timed correlations exclude those records.' : '') +
+      const location=result.format==='csv'?'CSV row(s)':result.format==='json'?'JSON record(s)':result.format.toUpperCase()+' line(s)';
+      setStatus(d.rowsParsed + ' events parsed from ' + result.format.toUpperCase() + '.' + (rows.length ? ' Skipped unreadable Event IDs in '+location+' ' + describe(rows) + '.' : '') +
+        (timestampRows.length ? ' Timestamp review needed in '+location+' ' + describe(timestampRows) + '; timed correlations exclude those records.' : '') +
         ' Select Analyse events to build the report.');
     } catch (error) {
-      if (token === taskToken && error.name !== 'AbortError') setStatus(error.message || 'Could not read this CSV.', true);
+      if (token === taskToken && error.name !== 'AbortError') setStatus(error.message || 'Could not read this event export.', true);
     } finally { if (token === taskToken) { setBusy(false); els['csv-file'].value = ''; } }
   }
   async function loadFile(file) {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.csv')) { setStatus('Please choose a file with a .csv extension.', true); return; }
+    let format;try{format=inputs.formatForName(file.name);}catch(error){setStatus(error.message,true);els['csv-file'].value='';return;}
     if (file.size > 25 * 1024 * 1024) { setStatus('File exceeds 25 MB. Export a smaller time range.', true); return; }
     if (!mayReplaceDataset()) { els['csv-file'].value = ''; return; }
-    await processInput({ file, bytes: file.size }, file.name, { lastModified: file.lastModified ? new Date(file.lastModified).toISOString() : null });
+    await processInput({ file, bytes: file.size, format }, file.name, { lastModified: file.lastModified ? new Date(file.lastModified).toISOString() : null });
   }
   async function runAnalysis(focusReport = false) {
     if (!currentEvents.length) return;
     const token = ++taskToken, effectiveSettings = settings();
     setBusy(true); setStatus('Correlating events…');
     try {
-      const result = await runner.run('analyze', { events: currentEvents, settings: effectiveSettings, bytes: source.sizeBytes },
+      const result = await runner.run('analyze', { events: currentEvents, settings: effectiveSettings, ruleProfile:currentProfile, bytes: source.sizeBytes },
         message => { if (token === taskToken) setStatus(message); });
       if (token !== taskToken) return;
       currentFindings = result.map(({ eventUids, ...finding }) => ({ ...finding, events: eventUids.map(uid => eventByUid.get(uid)) }));
-      analysisSettings = effectiveSettings; analyzedAt = new Date().toISOString();
+      analysisSettings = effectiveSettings; analysisProfile=currentProfile; analyzedAt = new Date().toISOString();
       if (!currentFindings.some(finding => finding.id === activeEvidenceId)) activeEvidenceId = null;
       eventPriorities = new Map(); relatedFindings = new Map();
       for (const finding of currentFindings) for (const event of finding.events) {
@@ -167,6 +173,7 @@
     } catch (error) {
       if (token === taskToken && error.name !== 'AbortError') {
         if (analyzedAt) for (const [key,id] of Object.entries(settingIds)) els[id].value = String(analysisSettings[key]);
+        if(analyzedAt){currentProfile=analysisProfile;renderRuleProfile();}
         setStatus(error.message, true);
       }
     }
@@ -281,7 +288,7 @@
     const links = (relatedFindings.get(event.uid) || []).map(finding => '<button type="button" class="button button-quiet" data-finding-focus="' + finding.id + '">Back to ' + escapeHtml(finding.title) + '</button>').join('');
     return '<dl class="match-fields">' + pairs.map(([label,value]) => pairHtml(label,value)).join('') +
       '</dl><h4>Original event message</h4><pre tabindex="0" aria-label="Original event message">' + escapeHtml(preview(event.message || 'No Message column value')) +
-      '</pre><details><summary>All original CSV columns</summary><dl class="match-fields">' +
+      '</pre><details><summary>' + (event.inputFormat && event.inputFormat !== 'csv' ? 'All source and adapter fields' : 'All original CSV columns') + '</summary><dl class="match-fields">' +
       event.rawFields.map(item => pairHtml(item.header,item.value)).join('') + '</dl></details>' + links;
   }
   function viewState() {
@@ -311,19 +318,19 @@
       const priority = eventPriorities.get(event.uid) || 'Informational';
       const summary = [labelById[event.id] || 'Other event',event.logonType ? 'Logon type ' + event.logonType + ' (' + (logonTypes[event.logonType] || 'Other') + ')' : '',
         event.process,event.serviceName,event.taskName,event.firewallRule].filter(Boolean).join(' · ').slice(0,500);
-      return '<tr data-event-uid="' + event.uid + '"><td>' + escapeHtml(displayTime(event)) + '<br>CSV row ' + event.lineNumber +
+      return '<tr data-event-uid="' + event.uid + '"><td>' + escapeHtml(displayTime(event)) + '<br>' + escapeHtml(sourceLabel(event)) +
         '</td><td>' + event.id + '</td><td><span class="severity ' + priority.toLowerCase() + '">' + priority +
         '</span></td><td>' + escapeHtml((event.account || event.accountSid ? accountDisplay(event) : '—').slice(0,500)) + '</td><td>' +
         escapeHtml((event.ip || event.computer || '—').slice(0,500)) + '</td><td class="event-message">' + escapeHtml(summary) +
-        '<details class="event-details" data-inspect="' + event.uid + '"><summary>Inspect CSV row ' + event.lineNumber + '</summary><div class="event-detail-body"></div></details></td></tr>';
+        '<details class="event-details" data-inspect="' + event.uid + '"><summary>Inspect ' + escapeHtml(sourceLabel(event)) + '</summary><div class="event-detail-body"></div></details></td></tr>';
     }).join('') : '<tr><td colspan="6" class="table-empty">No events match these filters. Clear filters to return to the selected evidence.</td></tr>';
   }
   function renderTimeline() {
     timelinePage = Math.max(0,Math.min(timelinePage,Math.ceil(noteworthy.length / TIMELINE_PAGE_SIZE) - 1));
     pager('timeline',timelinePage,TIMELINE_PAGE_SIZE,noteworthy.length);
     els.timeline.innerHTML = noteworthy.length ? noteworthy.slice(timelinePage * TIMELINE_PAGE_SIZE,(timelinePage + 1) * TIMELINE_PAGE_SIZE).map(event =>
-      '<li><time>' + escapeHtml(displayTime(event)) + (event.date ? '' : ' · unparsed time; ordered by CSV row') + '</time><strong>' +
-      escapeHtml(labelById[event.id] || 'Other event') + '</strong> · CSV row ' + event.lineNumber + ' · ' +
+      '<li><time>' + escapeHtml(displayTime(event)) + (event.date ? '' : ' · unparsed time; ordered by source record') + '</time><strong>' +
+      escapeHtml(labelById[event.id] || 'Other event') + '</strong> · ' + escapeHtml(sourceLabel(event)) + ' · ' +
       escapeHtml((event.account || event.accountSid ? accountDisplay(event) : event.computer || 'Unknown host').slice(0,500)) + '</li>').join('') :
       '<li>No noteworthy activity generated by configured rules.</li>';
   }
@@ -346,7 +353,7 @@
     const scopeUids = new Set(events.map(event => event.uid));
     const findings = orderedFindings.filter(finding => finding.events.every(event => scopeUids.has(event.uid)));
     const input = { events, findings, priorities:[...eventPriorities], annotations:{...annotations}, source:{...source},
-      case:{...caseContext}, settings:analysisSettings, analyzedAt, browserTimezone, diagnostics,
+      case:{...caseContext}, settings:analysisSettings, ruleProfile:analysisProfile, analyzedAt, browserTimezone, diagnostics,
       coverage:correlationCoverage(currentEvents), scope:{mode,totalEvents:currentEvents.length,totalFindings:currentFindings.length,
         evidenceFindingId:mode === 'view' ? activeEvidenceId : null, filters:mode === 'view' ? viewState() : null,
         eventSort:viewState().sort, findingSort:els['finding-sort'].value} };
@@ -370,6 +377,30 @@
     } finally { if (token === taskToken) setBusy(false); }
   }
 
+  function renderRuleProfile(){
+    const rules=Object.entries(profiles.effectiveRules(currentProfile)),disabled=rules.filter(([,rule])=>!rule.enabled).length;
+    els['rule-profile-status'].textContent=currentProfile.id+' · '+currentProfile.version+' · catalog '+profiles.catalog.version+' · '+disabled+' disabled rule(s).';
+    els['rule-catalog'].innerHTML=rules.map(([id,rule])=>'<tr><td>'+escapeHtml(id)+'<br>'+escapeHtml(rule.title)+'</td><td>'+(rule.enabled?'Yes':'No')+'</td><td>'+rule.breakdown.reduce((sum,item)=>sum+item.points,0)+'</td></tr>').join('');
+  }
+  els['rule-profile-file'].addEventListener('change',async event=>{
+    const file=event.target.files?.[0];if(!file||busy)return;
+    if(!file.name.toLowerCase().endsWith('.json')||file.size>65536){els['rule-profile-status'].textContent='Choose a JSON rule profile up to 64 KB.';return;}
+    const token=++taskToken;setBusy(true);setStatus('Reading rule profile…');
+    try{
+      const text=await file.text();if(token!==taskToken)return;
+      currentProfile=profiles.normalizeProfile(inputs.parseJsonDocument(text));renderRuleProfile();
+      els['rule-profile-file'].setAttribute('aria-invalid','false');setBusy(false);
+      if(analyzedAt)await runAnalysis();else setStatus('Rule profile ready. Analyse events to apply it.');
+    }catch(error){if(token===taskToken){els['rule-profile-file'].setAttribute('aria-invalid','true');els['rule-profile-status'].textContent='Profile rejected: '+error.message;setStatus('Rule profile rejected; the previous profile is still active.');}}
+    finally{if(token===taskToken)setBusy(false);els['rule-profile-file'].value='';}
+  });
+  els['reset-rule-profile'].addEventListener('click',()=>{if(busy)return;currentProfile=profiles.defaultProfile;renderRuleProfile();if(analyzedAt)return runAnalysis();});
+  els['download-rule-profile'].addEventListener('click',()=>{
+    if(busy)return;
+    const url=URL.createObjectURL(new Blob([JSON.stringify(currentProfile,null,2)],{type:'application/json;charset=utf-8'})),link=document.createElement('a');
+    link.href=url;link.download=reports.filename(currentProfile.id,'rule-profile','json');document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+  });
+  renderRuleProfile();
   els['analyze-button'].addEventListener('click',() => runAnalysis(true));
   els['cancel-task'].addEventListener('click',cancelTask);
   els['csv-file'].addEventListener('change',event => loadFile(event.target.files?.[0]));

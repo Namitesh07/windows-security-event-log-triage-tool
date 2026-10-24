@@ -35,7 +35,7 @@ test('JSON report preserves raw evidence and carries effective settings, rule ve
   input.annotations['inactive-finding']={status:'Escalate',note:'Retained after settings change'};
   input.events[0]._searchText='private cache';
   const report=JSON.parse(JSON.stringify(r.createReport(input)));
-  assert.equal(report.tool.version,'1.3.0');assert.ok(report.tool.rulesVersion);
+  assert.equal(report.tool.version,require('../package.json').version);assert.ok(report.tool.rulesVersion);
   assert.equal(report.settings.failureThreshold,5);assert.ok(report.ruleCatalog.some(rule=>rule.id===finding.ruleId));
   assert.deepEqual(report.events[0].rawFields,input.events[0].rawFields);
   assert.equal('_searchText' in report.events[0],false);

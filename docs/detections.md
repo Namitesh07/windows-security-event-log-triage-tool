@@ -2,6 +2,8 @@
 
 These rules are educational triage heuristics. Validate findings against account ownership, change records, source devices, and endpoint evidence. The tool does not know the local baseline or establish intent.
 
+The canonical [rule catalog](../rules/catalog.json) is version `2026-10-22`. The conditions and default points below are unchanged from v1.3.1. Optional [data-only profiles](rules.md) change enabled state and contribution points; exports include the exact applied profile and resolved weights. All supported [input formats](inputs.md) use this engine.
+
 ## Correlation settings and required context
 
 | Setting | Default | Scope |
@@ -13,7 +15,7 @@ These rules are educational triage heuristics. Validate findings against account
 
 All settings can be changed in the page. These defaults are examples for learning and need environment-specific tuning. Intervals include their endpoints. A success must follow its failures; equal timestamps use input-record order. A later failure does not invalidate an earlier matched success.
 
-Timed correlations require parsed timestamps with a time of day, matching timezone basis (explicit offsets versus local wall time), and the required identity/host/source values. Ambiguous, missing, and date-only times are excluded from timed rules. They remain visible in the event table. The coverage notice reports excluded records. The timeline places unparsed times after parsed times in CSV row order; it cannot establish chronology for those records.
+Timed correlations require parsed timestamps with a time of day, matching timezone basis (explicit offsets versus local wall time), and the required identity/host/source values. Ambiguous, missing, and date-only times are excluded from timed rules. They remain visible in the event table. The coverage notice reports excluded records. The timeline places unparsed times after parsed times in input-record order; it cannot establish chronology for those records. ISO fractions up to seven digits are accepted; calculations truncate to milliseconds and preserve original timestamp text.
 
 Authentication identities retain domain information. Differing known SIDs prevent a match. Password bursts with differing known SIDs are kept separate. Domain aliases and different hostnames are not resolved. Account/group correlations are limited to one reporting host, which can miss valid sequences split across domain controllers. A member SID can match a new-account SID when its account name is absent.
 
@@ -21,7 +23,7 @@ Overlapping successful-logon findings do not reuse the same failure evidence. St
 
 ## Evidence and priority
 
-Each finding has a stable rule ID, exact supporting event references, original CSV row numbers, matched values, and a score breakdown. Select View supporting events to scope the table, use the row inspector to compare extracted fields with original columns/message, and return with Back to finding. Table pages provide access to every matching row. IDs are stable within the loaded dataset and may change if a new export changes row order.
+Each finding has a stable rule ID, supporting source-record references, matched values, and a score breakdown. CSV row numbers, XML start lines, JSON record numbers, and JSON Lines physical lines identify the source appropriately. Select View supporting events to scope the table, compare extracted fields with the source, and return with Back to finding. IDs are stable within the loaded dataset and may change if a new export changes record order.
 
 Priority is a deterministic mapping: High = 60 or more points; Medium = 30–59; Low = 1–29; Informational = 0. Windows event Level is preserved separately in the row inspector. The score is assigned by the rule and is not a probability, calibrated risk estimate, or severity supplied by Windows. There is no total dataset risk score.
 
@@ -59,7 +61,7 @@ The current patterns review PowerShell encoded-command switches or FromBase64Str
 
 ## Event coverage and logging prerequisites
 
-These entries describe the expected Windows provider/channel. The application reads exported CSV values and does not verify record authenticity. Structured columns (such as TargetUserName, MemberSid, NewProcessName, and CommandLine) take precedence over English message extraction. CSV User is retained separately; it is not used as the target of administrative changes.
+These entries describe the expected Windows provider/channel. The application reads exported event fields and does not verify authenticity. Structured fields (such as TargetUserName, MemberSid, NewProcessName, and CommandLine) take precedence over English message extraction. Source User metadata is retained separately; it is not used as the target of administrative changes.
 
 | Event ID | Meaning | Channel | Logging / required context |
 | --- | --- | --- | --- |

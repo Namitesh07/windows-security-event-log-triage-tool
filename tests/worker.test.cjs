@@ -9,7 +9,7 @@ const project = path.resolve(__dirname,'..');
 const bootstrap = `
   const {parentPort,workerData}=require('node:worker_threads');
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
-  const scope={postMessage:message=>parentPort.postMessage(message)};scope.self=scope;
+  const scope={TextDecoder,postMessage:message=>parentPort.postMessage(message)};scope.self=scope;
   const context=vm.createContext(scope);
   scope.importScripts=(...files)=>files.forEach(file=>vm.runInContext(fs.readFileSync(path.join(workerData.project,file),'utf8'),context));
   scope.importScripts('worker.js');
@@ -26,7 +26,7 @@ class BrowserWorker {
 }
 function runner(worker=true) {
   const window={location:{protocol:'https:'},Worker:worker ? BrowserWorker : undefined,
-    EventTriageAnalysis:require('../analysis.js'),EventTriageReports:require('../report.js')};
+    EventTriageAnalysis:require('../analysis.js'),EventTriageInputs:require('../inputs.js'),EventTriageReports:require('../report.js')};
   vm.runInNewContext(fs.readFileSync(path.join(project,'task-runner.js'),'utf8'),{window,setTimeout});
   return new window.EventTriageTasks.TaskRunner();
 }
@@ -72,4 +72,11 @@ test('cancelled fallback reads cannot replace a later result',async()=>{
   const fresh=await task.run('parse',{text:'Event ID,Message\n1102,fresh',bytes:30});
   resolve('Event ID,Message\n4624,old');await rejected;
   assert.equal(fresh.events[0].id,'1102');
+});
+for(const format of ['xml','json','jsonl'])test('real worker parses '+format+' and applies the selected rule profile',async()=>{
+  const task=runner(),text=fs.readFileSync(path.join(project,'samples/authentication-sequence.'+format),'utf8');
+  const parsed=await task.run('parse',{file:new Blob([text]),bytes:Buffer.byteLength(text),format});
+  const ruleProfile=require('../samples/profiles/lab-tuning.json');
+  const findings=await task.run('analyze',{events:parsed.events,ruleProfile,settings:{},bytes:text.length});
+  assert.equal(findings[0].score,40);assert.equal(findings[0].events,undefined);assert.equal(findings[0].eventUids.length,6);
 });

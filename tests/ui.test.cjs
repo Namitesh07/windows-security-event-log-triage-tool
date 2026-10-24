@@ -36,13 +36,13 @@ function app() {
   document.createElement=()=>new Element();
   const fakeWindow={confirm:()=>true,addEventListener:(type,handler)=>{windowEvents[type]=handler;}};
   const testTimeout=(callback,delay)=>{const timer=setTimeout(callback,delay);if(delay>1000)timer.unref();return timer;};
-  const context=vm.createContext({window:fakeWindow,document,console,Blob,setTimeout:testTimeout,clearTimeout,
+  const context=vm.createContext({window:fakeWindow,document,console,Blob,TextDecoder,setTimeout:testTimeout,clearTimeout,
     URL:{createObjectURL:blob=>{const url='blob:'+urls.size;urls.set(url,blob);return url;},revokeObjectURL:url=>urls.delete(url)},
     Event:class{constructor(type){this.type=type;}}});
-  for(const file of ['analysis.js','report.js','task-runner.js','script.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context);
+  for(const file of ['rules.generated.js','rule-profiles.js','analysis.js','inputs.js','report.js','task-runner.js','script.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context);
   return {
     el:id=>elements.get(id), document, downloads, window:fakeWindow, windowEvents,
-    load:async text=>{elements.get('csv-file').files=[{name:'case.csv',size:Buffer.byteLength(text),text:async()=>text}];await elements.get('csv-file').trigger('change');await elements.get('analyze-button').trigger('click');},
+    load:async (text,name='case.csv')=>{elements.get('csv-file').files=[{name,size:Buffer.byteLength(text),text:async()=>text}];await elements.get('csv-file').trigger('change');await elements.get('analyze-button').trigger('click');},
     inspect:async uid=>{const body=new Element(),details={dataset:{inspect:uid},open:true,querySelector:()=>body};await elements.get('event-rows').trigger('toggle',{target:details});return body.innerHTML;},
     sample:async key=>{await buttons.find(button=>button.dataset.sample===key).trigger('click');await elements.get('analyze-button').trigger('click');},
     evidence:async id=>elements.get('findings').trigger('click',{target:{closest:()=>({dataset:{evidence:id}})}})
@@ -100,7 +100,7 @@ test('event paging reaches rows beyond the first page and original HTML-like val
   ui.el('csv-file').files=[{name:'invalid.evtx',size:10,text:async()=>''}];
   await ui.el('csv-file').trigger('change');
   assert.equal(ui.el('report').hidden,false);assert.equal(ui.el('analyze-button').disabled,false);
-  assert.ok(ui.el('parse-status').textContent.includes('.csv extension'));
+  assert.ok(ui.el('parse-status').textContent.includes('Raw EVTX'));
 });
 test('a slow file read cannot overwrite a newly chosen demo', async () => {
   const ui=app();let resolve;
@@ -191,6 +191,31 @@ test('CSV downloads include notes and settings and protect formula-like analyst 
   await ui.el('export-findings').trigger('click');const csv=await ui.downloads.at(-1).blob.text();
   assert.ok(csv.includes('"\'=SUM(1,1)"'));assert.ok(csv.includes('Effective settings'));
   await ui.el('export-events').trigger('click');assert.ok((await ui.downloads.at(-1).blob.text()).includes('Original CSV fields (JSON)'));
+});
+
+for(const extension of ['xml','json','jsonl'])test('UI imports '+extension+' and exports its original source locations',async()=>{
+  const ui=app();await ui.load(fs.readFileSync(path.join(root,'samples/authentication-sequence.'+extension),'utf8'),'case.'+extension);
+  assert.equal(ui.el('report').hidden,false);assert.ok(ui.el('findings').innerHTML.includes('AUTH_SUCCESS_AFTER_FAILURES'));
+  assert.ok(ui.el('event-rows').innerHTML.includes(extension==='xml'?'Inspect XML line':extension==='json'?'Inspect JSON record':'Inspect JSON line'));
+  assert.ok((await ui.inspect('event-1')).includes('All source and adapter fields'));
+  await ui.el('export-json').trigger('click');const report=JSON.parse(await ui.downloads.at(-1).blob.text());
+  assert.equal(report.source.format,extension);assert.equal(report.events[0].inputFormat,extension);assert.equal(report.events[0].sourceRecord,1);
+});
+test('UI applies and resets a validated profile while preserving case notes',async()=>{
+  const ui=app();await ui.sample('password');ui.el('case-notes').value='Keep this context';await ui.el('case-notes').trigger('input');
+  const text=fs.readFileSync(path.join(root,'samples/profiles/lab-tuning.json'),'utf8');
+  ui.el('rule-profile-file').files=[{name:'profile.json',size:text.length,text:async()=>text}];await ui.el('rule-profile-file').trigger('change');
+  assert.ok(ui.el('findings').innerHTML.includes('40 priority points'));assert.equal(ui.el('case-notes').value,'Keep this context');
+  await ui.el('export-json').trigger('click');const report=JSON.parse(await ui.downloads.at(-1).blob.text());assert.equal(report.ruleProfile.id,'lab-tuning');
+  await ui.el('reset-rule-profile').trigger('click');assert.ok(ui.el('findings').innerHTML.includes('60 priority points'));
+});
+test('invalid or superseded rule profiles cannot replace the active profile',async()=>{
+  const ui=app();await ui.sample('password');
+  ui.el('rule-profile-file').files=[{name:'bad.json',size:10,text:async()=>'{"schemaVersion":"99"}'}];await ui.el('rule-profile-file').trigger('change');
+  assert.ok(ui.el('rule-profile-status').textContent.includes('Profile rejected'));assert.ok(ui.el('findings').innerHTML.includes('60 priority points'));
+  let resolve;ui.el('rule-profile-file').files=[{name:'slow.json',size:10,text:()=>new Promise(done=>{resolve=done;})}];const pending=ui.el('rule-profile-file').trigger('change');
+  await ui.sample('normal');resolve('{"schemaVersion":"1.0","id":"late","version":"1","rules":{}}');await pending;
+  await ui.el('export-json').trigger('click');assert.equal(JSON.parse(await ui.downloads.at(-1).blob.text()).ruleProfile.id,'default');
 });
 
 

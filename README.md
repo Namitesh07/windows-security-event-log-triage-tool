@@ -17,7 +17,7 @@ A privacy-first, educational triage tool — not a verdict that a system is comp
 
 Windows event logs contain valuable investigation clues, but a single Event ID rarely tells the whole story. This project helps students and early-career analysts **spot, group, and understand activity worth reviewing** using visible rules and correlations within the loaded export.
 
-Analysis happens entirely in the browser. The tool does not upload the selected CSV, contact a server, query a threat-intelligence feed, or claim to determine attacker intent.
+Analysis happens entirely in the browser. The tool does not upload selected event files or rule profiles, contact an analysis server, query a threat-intelligence feed, or claim to determine attacker intent.
 
 ## What it can inspect
 
@@ -29,11 +29,13 @@ Analysis happens entirely in the browser. The tool does not upload the selected 
 | Defence and policy changes | Security log clearing (1102), audit-policy changes (4719), firewall rule changes (4946 / 4947 / 4948), and firewall setting changes (4950) |
 | Credential context | Explicit-credential logon attempts (4648), including credential account, actor, process, and target server |
 | Context | Available affected account and actor, host, source IP, workstation, logon type, process and parent path, process ID, command line, service name/path, PowerShell script-block ID, timestamp, and message details |
-| Learning scenarios | Five fictional CSV datasets: normal activity, password guessing, account persistence, administrative activity, and a correlation/policy lab |
+| Learning scenarios | Five built-in CSV demos plus seven curated cross-format, benign, incomplete, and separate-host practice cases |
 
 ### Built to make the reasoning visible
 
-- **Traceable findings:** stable rule IDs, matched field values, point-by-point score explanations, and direct links to the exact supporting CSV rows. Inspect extracted fields alongside original messages and columns, then return to the finding.
+- **Multiple formats:** CSV, Windows Event XML, JSON, and JSON Lines/NDJSON use the same analysis engine. A local Windows PowerShell helper converts EVTX files to XML.
+- **Traceable findings:** stable rule IDs, matched field values, point-by-point score explanations, and links to supporting source records. Inspect original XML/JSON or CSV columns alongside extracted fields, then return to the finding.
+- **Versioned rules:** 23 definitions live in a readable JSON catalog. Optional data-only profiles can disable rules or change contribution points; matching conditions stay fixed in the engine. Exports record the exact profile and resolved weights.
 - **Configurable windows:** defaults are **5 failures in 10 minutes**, **5 distinct accounts** for spraying, and **30 minutes** for account creation followed by group addition. All four settings are adjustable.
 - **Careful correlation:** authentication matches require the same affected identity, reporting host, and source; account/group sequences require a matching target identity and host. Domains and available SIDs are preserved.
 - **Transparent scope:** missing or ambiguous timestamps and missing identity/host/source fields are reported as correlation coverage gaps. These records remain visible as evidence.
@@ -43,16 +45,17 @@ Analysis happens entirely in the browser. The tool does not upload the selected 
 - **Portable reports:** download JSON, findings CSV, or events CSV for the entire dataset or current evidence/filters. Exports span all matching pages and include analysis provenance. JSON preserves source strings; CSV guards formula-like cells for spreadsheet review.
 - **Case context:** add a case title, analyst, collection timezone, case notes, and a review status/note for each finding. Notes stay in the tab until you export them; no browser storage is used.
 - **Responsive processing:** cancellable Web Worker parsing, analysis, and export when served over HTTP(S). Row inspectors load on demand; large reports use bounded pages. A 2 MB fallback remains available when opening the page directly.
+- **Repeatable checks:** dependency-free regression tests, Node 22/24 CI, Windows converter checks, and reproducible source ZIPs with SHA-256 checksums.
 
 ## How to use it
 
 1. Open the [live demo](https://namitesh07.github.io/windows-security-event-log-triage-tool/) or run the project locally.
-2. In Windows Event Viewer, export the event records you are authorised to inspect as a CSV file.
-3. Choose the CSV, review parsing feedback, adjust the correlation thresholds/windows if needed, and select **Analyse events**.
-4. Open **View supporting events** on a finding. Inspect the original CSV rows, matched fields, and scoring breakdown; use **Back to finding** to continue the review.
+2. Export the event records you are authorised to inspect as CSV, Windows Event XML, JSON, or JSON Lines. See the [input guide](docs/inputs.md) for accepted shapes and EVTX conversion.
+3. Choose the file, review parsing feedback, adjust the correlation thresholds/windows if needed, and select **Analyse events**. Optionally inspect or load a tuning profile under **Detection rules and optional tuning profile**.
+4. Open **View supporting events** on a finding. Inspect source records, matched fields, and scoring contributions; use **Back to finding** to continue the review.
 5. Sort and filter the evidence, add case or finding notes, then choose an export scope and download JSON or CSV. Use **Entire dataset → Download JSON report** to keep all case notes, including notes from findings removed by a settings change.
 
-**Tip:** The tool needs a recognisable **Event ID** column. CSV headers vary between Windows versions and locales, so common variants such as **Event ID**, **EventID**, and **event_id** are recognised. ISO dates are parsed explicitly. Timed correlations require a timestamp with a time of day and a consistent timezone basis; ambiguous numeric dates are excluded from those rules. Raw **.evtx** files are not supported in version 1.
+**Tip:** CSV needs a recognisable **Event ID** column, such as **Event ID**, **EventID**, or **event_id**. XML needs the Windows Event/System structure; JSON accepts event objects, an array, or an events-array wrapper. Timed rules require a timestamp with a time of day and consistent timezone basis. Raw **.evtx** files require [local conversion to XML](tools/Export-TriageEvents.ps1) first; binary EVTX browser parsing remains outside this release.
 
 ## Read the result carefully
 
@@ -60,6 +63,7 @@ The output is an **explainable triage signal**, not a probability that an event 
 
 See the [detection and logging guide](docs/detections.md) for exact rule conditions, false-positive context, supported Event IDs, and audit requirements.
 See the [report and case guide](docs/reports.md) for export fields, scope, note retention, and file-size limits.
+See [rules and profiles](docs/rules.md) for tuning and [practice cases](samples/README.md) for expected findings. Priority points can change with a profile, so compare the applied profile when comparing reports.
 
 | Result | What it means |
 | --- | --- |
@@ -71,10 +75,10 @@ Use the results to decide what to inspect next: confirm the account owner, expec
 
 ## Privacy by design
 
-- CSV reading and analysis take place in the browser with the local File API.
+- Event-file and profile reading and analysis take place in the browser with the local File API.
 - No backend, database, account, analytics, telemetry, AI service, external API, or tracking is used.
-- The page loads its own app assets, including worker scripts, from the same origin. No CSV, case-note, telemetry, or API uploads are made; fonts and styling use local system resources.
-- CSV data and case notes stay in the active browser page. The app does not use localStorage, IndexedDB, cookies, or automatic persistence. Downloaded reports are saved only when you request an export.
+- The page loads its own app assets, including worker scripts, from the same origin. No event-file, profile, case-note, telemetry, or API uploads are made; fonts and styling use local system resources.
+- Event data, profiles, and case notes stay in the active browser page. The app does not use localStorage, IndexedDB, cookies, or automatic persistence. Downloaded reports are saved only when you request an export.
 - Event values are rendered as text after escaping; the app does not inject event data as executable HTML.
 - Treat downloaded reports as sensitive as the original logs; they can include account names, hostnames, commands, original messages, and analyst notes.
 
@@ -89,25 +93,27 @@ git clone https://github.com/Namitesh07/windows-security-event-log-triage-tool.g
 cd windows-security-event-log-triage-tool
 ~~~
 
-Open **index.html** in a modern browser, then load one of the CSV files in **samples/** or choose your own authorised Windows Event Viewer CSV export. To run the parser and detection tests, install Node.js 18 or later and run **npm test** from the repository folder.
+Open **index.html** in a modern browser, then load a file from **samples/** or choose your own authorised export. To run developer checks and tests, use Node.js 22 or later. No npm install is required.
 
-Opening `index.html` directly uses small-file mode (up to **2 MB**). For background processing of CSV files up to **25 MB**, use GitHub Pages or serve the folder locally, for example with Python 3:
+Opening `index.html` directly uses small-file mode (up to **2 MB**). For background processing of files up to **25 MB**, use GitHub Pages or serve the folder locally, for example with Python 3. Both modes enforce **100,000 accepted events**:
 
 ~~~bash
 python3 -m http.server 8000 --bind 127.0.0.1
 ~~~
 
-Then open `http://127.0.0.1:8000`. Keep all JavaScript files beside `index.html`, including `report.js`, `task-runner.js`, and `worker.js`. Processing remains local. Large or complex datasets can still consume significant memory; progress reports processing stages, and **Cancel operation** stops the active worker.
+Then open `http://127.0.0.1:8000`. Keep all JavaScript files beside `index.html`, including the new `rules.generated.js`, `rule-profiles.js`, and `inputs.js`, plus `report.js`, `task-runner.js`, and `worker.js`. Preserve `samples/` and `tools/` for demos and the converter download. Processing remains local. Large or complex datasets still consume memory; **Cancel operation** stops the active worker.
 
 ## Test the analysis logic
 
-The project includes a dependency-free Node.js test suite for CSV parsing, timestamps, extraction, detection rules, all five samples, report scopes/sorting, export safety, note retention, UI flows, and the actual worker script using Node worker threads and structured cloning. UI flow tests use a lightweight DOM harness; they are not a full browser accessibility audit.
+The dependency-free suite covers all input formats, timestamp/extraction rules, profiles, curated fixtures, report scopes/sorting, export safety, note retention, UI flows, and the actual worker script using Node worker threads and structured cloning. UI tests use a lightweight DOM harness; they do not replace manual browser/accessibility testing.
 
 ~~~bash
+npm run check
 npm test
+npm run package
 ~~~
 
-Node.js 18 or later is required to run the tests. The browser-based analyser still runs without installing Node.js.
+Node.js 22 or later is required only for developer tooling. CI runs Node 22/24 checks and tests plus Windows PowerShell converter checks. Tag/manual release validation creates a source ZIP and checksum as a workflow artifact; it does not publish a release or deploy a site. See [development and release checks](docs/development.md) and the [upgrade guide](UPGRADE_GUIDE.md).
 
 ## Know the limits
 
@@ -120,7 +126,7 @@ This project is an educational aid for deciding what to inspect next. It does **
 - know your organisation's normal baseline, logging policy, change records, or retention gaps; or
 - establish that events with different users, hosts, or contexts are related.
 
-English Event Viewer message sections and common structured CSV field names are supported. Localised message labels may not be extracted; raw rows are still available. Timezone-free timestamps are treated as browser-local wall times, so confirm collection context before interpreting them. PowerShell fragments are inspected separately and are not automatically reassembled. Raw task XML is retained for review.
+English Event Viewer message sections and common structured event fields are supported. Localised messages may need structured EventData fields; original records remain available. XML support is a bounded Windows Event XML subset, not a general XML or XSD validator. JSON must match the [documented event shape](docs/inputs.md). UTF-8 and BOM-marked UTF-16 are supported. ISO fractional seconds up to seven digits are accepted; calculations use millisecond precision and retain original timestamp strings. Timezone-free timestamps use browser-local wall time. PowerShell fragments are inspected separately rather than reassembled. Raw task XML is retained for review.
 
 Reports are snapshots, not importable saved cases or cryptographic evidence records. Collection timezone is analyst context and does not reinterpret dates. Notes are retained across filters, sorting, and re-analysis within the dataset, but starting a new dataset clears the case; export first. Row inspectors shorten individual values above 20,000 characters for display; full values remain in exports.
 

@@ -1,6 +1,36 @@
 # Changelog
 
-## Unreleased — v1.3.0 / upgrades 11–14
+## Unreleased — v1.4.0 / upgrades 15–18
+
+### Fixed
+
+- Corrected the uploaded repository layout so the v1.4.0 app, documentation, tests, and CI workflows are at the repository root. Preserved the bottom-right creator credit and removed the redundant nested source copy.
+
+### Added
+
+- Windows Event XML, JSON, JSON Lines/NDJSON imports alongside CSV, with UTF-8/BOM-marked UTF-16 decoding, explicit errors, and preserved source records/locations.
+- Local Windows PowerShell EVTX-to-XML conversion helper; binary EVTX browser parsing remains out of scope.
+- Human-readable versioned catalog for all 23 existing rules, generated browser asset, visible rule list, and validated data-only profiles for enabled state and contribution points.
+- Exact applied profile, effective rule weights, and input-format/source-location provenance in JSON and CSV reports.
+- Seven curated practice cases covering equivalent formats, account lifecycle, benign process activity, incomplete timestamps, and host isolation; fixture manifest, exercises, and collection/rules/development guides.
+- Dependency-free generation, syntax/version/link checks, Node 22/24 CI, Windows converter checks, tag/version validation, and reproducible source archives with SHA-256 checksums.
+
+### Behaviour and compatibility
+
+- Default matching conditions and points remain unchanged. Disabled sequence rules do not suppress enabled standalone fallback cues.
+- Seven-digit ISO fractions are accepted and calculated at millisecond precision; original timestamps remain evidence.
+- Both processing modes enforce 100,000 accepted events; hosted workers keep the 25 MB limit and direct-file fallback keeps 2 MB. XML/JSON adapters cap distinct fields at 512 and nesting at 48.
+- Report schema is 1.1; CSV provenance columns are appended. Legacy CSV-row columns remain blank for non-CSV sources.
+- Developer tooling now requires Node.js 22+. Browser use still needs no build, install, external service, or upload.
+- Release workflows validate/package source without publishing releases or deploying. This source package was prepared without committing or pushing.
+
+## v1.3.1 — Frontend refresh
+
+- Applied the violet/pink/soft-blue theme and refreshed frontend styling.
+- Expanded the page to use available width with responsive gutters.
+- Kept Field Guide full width above Quick Reference and reduced excess panel whitespace.
+
+## v1.3.0 / upgrades 11–14
 
 ### Added
 

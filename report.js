@@ -2,8 +2,9 @@
 (function exposeReports(root) {
   'use strict';
   const analysis = typeof module !== 'undefined' && module.exports ? require('./analysis.js') : root.EventTriageAnalysis;
-  const TOOL_VERSION = '1.3.0';
-  const RULES_VERSION = '2026-10-15';
+  const TOOL_VERSION = '1.4.0';
+  const profiles = typeof module !== 'undefined' && module.exports ? require('./rule-profiles.js') : root.EventTriageProfiles;
+  const RULES_VERSION = profiles.catalog.version;
   const { severityOrder, eventSort, accountDisplay, labelById, rules, normalizeSettings, correlationCoverage } = analysis;
   const statuses = Object.freeze(['Unreviewed', 'Investigating', 'Expected activity', 'Escalate']);
   const eventSorts = Object.freeze(['csv', 'time-asc', 'time-desc', 'priority', 'id', 'account', 'source']);
@@ -59,8 +60,11 @@
     const events = input.events || [], findings = input.findings || [];
     const priorities = new Map(input.priorities || []);
     const annotations = input.annotations || {};
+    const ruleProfile = profiles.normalizeProfile(input.ruleProfile || profiles.defaultProfile);
+    const activeRules = profiles.effectiveRules(ruleProfile);
     return {
-      schemaVersion: '1.0', tool: { name: 'Windows Security Event Log Triage Tool', version: TOOL_VERSION, rulesVersion: RULES_VERSION },
+      schemaVersion: '1.1', tool: { name: 'Windows Security Event Log Triage Tool', version: TOOL_VERSION, rulesVersion: RULES_VERSION },
+      ruleProfile,
       generatedAt: input.generatedAt || new Date().toISOString(), analyzedAt: input.analyzedAt,
       source: input.source, case: normalizeCase(input.case), settings: normalizeSettings(input.settings),
       timestampContext: { browserTimezone: input.browserTimezone || 'Unknown',
@@ -68,7 +72,7 @@
       scope: { ...input.scope, exportedEvents: events.length, exportedFindings: findings.length,
         findingsPolicy: 'Complete findings only: every supporting event must belong to the export scope.' },
       coverage: input.coverage || correlationCoverage(events), coverageScope: input.coverage ? 'entire dataset' : 'exported events', diagnostics: input.diagnostics,
-      ruleCatalog: Object.entries(rules).map(([id, rule]) => ({ id, title: rule.title, contributions: rule.breakdown,
+      ruleCatalog: Object.entries(activeRules).map(([id, rule]) => ({ id, title: rule.title, enabled:rule.enabled, contributions: rule.breakdown,
         points: rule.breakdown.reduce((sum, part) => sum + part.points, 0) })),
       findings: findings.map(({ events: evidence, ...finding }) => ({ ...finding,
         eventUids: evidence.map(event => event.uid), review: normalizeAnnotation(annotations[finding.id]) })),
@@ -88,20 +92,21 @@
   }
   const csv = rows => '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
   function findingsCsv(report) {
-    const lines = new Map(report.events.map(event => [event.uid,event.lineNumber]));
-    return csv([['Tool version','Rules version','Generated at','Analysed at','Dataset','Scope','Case title','Analyst','Collection timezone','Case notes','Effective settings','Finding ID','Rule ID','Title','Review priority','Priority points','Review status','Analyst note','Event UIDs','CSV rows','Matched values','Score contributions','Why','Benign context','Next steps'],
+    const events = new Map(report.events.map(event => [event.uid,event]));
+    return csv([['Tool version','Rules version','Generated at','Analysed at','Dataset','Scope','Case title','Analyst','Collection timezone','Case notes','Effective settings','Finding ID','Rule ID','Title','Review priority','Priority points','Review status','Analyst note','Event UIDs','CSV rows','Matched values','Score contributions','Why','Benign context','Next steps','Source locations (JSON)','Rule profile (JSON)'],
       ...report.findings.map(finding => [report.tool.version,report.tool.rulesVersion,report.generatedAt,report.analyzedAt,report.source.name,
         report.scope.mode,report.case.title,report.case.analyst,report.case.collectionTimezone,report.case.notes,JSON.stringify(report.settings),
         finding.id,finding.ruleId,finding.title,finding.severity,finding.score,finding.review.status,finding.review.note,
-        finding.eventUids.join('; '),finding.eventUids.map(uid => lines.get(uid)).join('; '),
-        JSON.stringify(finding.matchedFields),JSON.stringify(finding.scoreBreakdown),finding.why,finding.benign,finding.next.join('\n')])]);
+        finding.eventUids.join('; '),finding.eventUids.map(uid => {const event=events.get(uid);return !event?.inputFormat||event.inputFormat==='csv'?event?.lineNumber:'';}).join('; '),
+        JSON.stringify(finding.matchedFields),JSON.stringify(finding.scoreBreakdown),finding.why,finding.benign,finding.next.join('\n'),
+        JSON.stringify(finding.eventUids.map(uid=>{const event=events.get(uid);return {uid,format:event?.inputFormat||'csv',record:event?.sourceRecord||event?.index,line:event?.inputFormat==='json'?null:event?.sourceLine??event?.lineNumber};})),JSON.stringify(report.ruleProfile)])]);
   }
   function eventsCsv(report) {
-    return csv([['Tool version','Rules version','Dataset','Scope','Event UID','CSV row','Event ID','Original timestamp','Parsed timestamp','Timezone basis','Timestamp status','Review priority','Windows level','Target account','Target SID','Actor','Reporting host','Source IP','Event type','Original message','Original CSV fields (JSON)','Case title','Effective settings'],
-      ...report.events.map(event => [report.tool.version,report.tool.rulesVersion,report.source.name,report.scope.mode,event.uid,event.lineNumber,
+    return csv([['Tool version','Rules version','Dataset','Scope','Event UID','CSV row','Event ID','Original timestamp','Parsed timestamp','Timezone basis','Timestamp status','Review priority','Windows level','Target account','Target SID','Actor','Reporting host','Source IP','Event type','Original message','Original CSV fields (JSON)','Case title','Effective settings','Input format','Source record','Source line','Rule profile (JSON)'],
+      ...report.events.map(event => [report.tool.version,report.tool.rulesVersion,report.source.name,report.scope.mode,event.uid,!event.inputFormat||event.inputFormat==='csv'?event.lineNumber:'',
         event.id,event.timeText,typeof event.date?.toISOString === 'function' ? event.date.toISOString() : event.date,event.timeBasis,event.timestampStatus,
         event.reviewPriority,event.level,accountDisplay(event),event.accountSid,event.actor,event.computer,event.ip,labelById[event.id] || 'Other event',
-        event.message,JSON.stringify(event.rawFields),report.case.title,JSON.stringify(report.settings)])]);
+        event.message,JSON.stringify(event.rawFields),report.case.title,JSON.stringify(report.settings),event.inputFormat||'csv',event.sourceRecord||event.index,event.sourceLine??'',JSON.stringify(report.ruleProfile)])]);
   }
   function filename(title, kind, extension) {
     const stem = String(title || 'triage-report').normalize('NFKC').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'triage-report';

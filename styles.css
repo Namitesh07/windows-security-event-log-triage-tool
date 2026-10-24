@@ -805,6 +805,14 @@ td:nth-child(2) {
   margin-top:48px;
 }
 
+.rule-panel{margin:20px 0 0}
+.rule-panel>summary{cursor:pointer;color:var(--accent);font-weight:700}
+.rule-panel .action-row{margin:14px 0}
+.rule-panel label{font-size:.8rem;color:var(--muted)}
+.rule-panel input{display:block;margin-top:6px;max-width:100%}
+.rule-panel input::file-selector-button{background:var(--surface-2);color:var(--text);border:1px solid var(--control-line);border-radius:8px;padding:8px;margin-right:8px}
+.rule-panel table{min-width:520px}
+
 .education-card,.howto-card {
   padding:24px;
 }

@@ -162,16 +162,16 @@
     const text = String(value ?? '').trim();
     if (!text) return { date: null, status: 'missing' };
 
-    const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:?\d{2})?)?$/i);
+    const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,7}))?)?(Z|[+-]\d{2}:?\d{2})?)?$/i);
     if (iso) {
       if (iso[8]) {
         const year = Number(iso[1]), month = Number(iso[2]), day = Number(iso[3]);
         const hour = Number(iso[4] || 0), minute = Number(iso[5] || 0), second = Number(iso[6] || 0);
         if (month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(year, month, 0)).getUTCDate() || hour > 23 || minute > 59 || second > 59) return { date: null, status: 'unrecognized' };
-        const date = new Date(text.replace(' ', 'T'));
+        const date = new Date(text.replace(' ', 'T').replace(/(\.\d{3})\d+(?=Z|[+-]\d)/i,'$1'));
         return Number.isNaN(date.getTime()) ? { date: null, status: 'unrecognized' } : { date, status: 'valid' };
       }
-      const fraction = (iso[7] || '').padEnd(3, '0');
+      const fraction = (iso[7] || '').slice(0,3).padEnd(3, '0');
       const date = validLocalDate(Number(iso[1]), Number(iso[2]), Number(iso[3]), Number(iso[4] || 0),
         Number(iso[5] || 0), Number(iso[6] || 0), Number(fraction || 0));
       return date ? { date, status: 'valid' } : { date: null, status: 'unrecognized' };
@@ -354,6 +354,7 @@
       const uid = 'event-' + (events.length + 1);
       events.push({
         uid, id, index: events.length + 1, lineNumber, timeText, date: timestamp.date, timestampStatus: timestamp.status,
+        sourceRecord:row.sourceRecord || index, sourceLine:row.sourceLine === undefined ? lineNumber : row.sourceLine,
         hasTime: /\d{1,2}:\d{2}/.test(timeText), timeBasis: /(?:Z|[+-]\d{2}:?\d{2})$/i.test(timeText) ? 'offset' : 'local',
         level: pick(row, map.level), source: pick(row, map.source), task: pick(row, map.task), keywords: pick(row, map.keywords),
         user, actor: actorRaw, actorDomain: actor.domain, account: identity.name, targetAccount: identity.name,
@@ -383,36 +384,8 @@
     return { events, diagnostics };
   }
 
-  const contribution = (label, points) => ({ label, points });
-  const defineRule = (title, breakdown, why, benign, next) => Object.freeze({ title, breakdown, why, benign, next });
-  const authNext = ['Confirm the account owner and source device.', 'Compare source IP, reporting host, logon type, and nearby endpoint activity.', 'Check for stale service credentials and approved authentication tests.'];
-  const accountNext = ['Verify the target account and actor against an approved change.', 'Confirm the group privileges and intended account lifetime.', 'Review subsequent logons and endpoint activity for the account.'];
-  const scriptNext = ['Review the full command or script and the parent process.', 'Confirm the script author, source, and approved purpose.', 'Gather endpoint evidence before deciding whether to escalate.'];
-  const rules = Object.freeze({
-    AUTH_FAILURE_BURST: defineRule('Repeated failed logons', [contribution('Repeated failures within the configured window', 30)], 'The failure threshold was met for the same account, source, and reporting host within one time window.', 'Mistyped passwords or stale service credentials can cause bursts.', authNext),
-    AUTH_SUCCESS_AFTER_FAILURES: defineRule('Possible password guessing followed by success', [contribution('Repeated failures within the configured window', 30), contribution('Subsequent matching successful logon in that window', 30)], 'Repeated failures were followed by success for the same account, source, and reporting host; known logon types are compatible.', 'A legitimate user can succeed after correcting a password.', authNext),
-    AUTH_PASSWORD_SPRAY: defineRule('Possible password spraying across accounts', [contribution('Distinct targeted accounts from one source and host within the window', 45)], 'One source targeted at least the configured number of distinct accounts on the same reporting host.', 'Authentication testing, shared proxies, or misconfigured applications can produce this pattern.', authNext),
-    ACCOUNT_CREATED_GROUP: defineRule('New account granted group membership', [contribution('New account', 15), contribution('Group addition', 20), contribution('Matching identity and host within the configured window', 20)], 'A new account was added to a security group within the configured window on the same reporting host.', 'Approved onboarding or service setup can include both changes.', accountNext),
-    ACCOUNT_CREATED_PRIVILEGED_GROUP: defineRule('New account granted group membership', [contribution('New account', 15), contribution('Known privileged group name or SID', 45), contribution('Matching identity and host within the configured window', 20)], 'A new account was added to a recognised privileged group within the configured window on the same reporting host.', 'Approved privileged onboarding or service setup can include both changes.', accountNext),
-    ACCOUNT_CREATED: defineRule('User account created', [contribution('Account creation event', 15)], 'A new account was created and needs ownership and purpose checks.', 'Routine onboarding and test accounts are common.', accountNext),
-    ACCOUNT_DELETED: defineRule('User account deleted', [contribution('Account deletion event', 10)], 'An account was deleted.', 'Approved offboarding and cleanup are common.', accountNext),
-    GROUP_ADDED: defineRule('Security group membership changed', [contribution('Group addition event', 20)], 'A member was added to a security group.', 'Approved access changes are common.', accountNext),
-    PRIVILEGED_GROUP_ADDED: defineRule('Privileged group membership changed', [contribution('Known privileged group name or SID', 45)], 'A member was added to a recognised privileged group.', 'An approved administrative access request can explain the change.', accountNext),
-    AUDIT_LOG_CLEARED: defineRule('Security audit log cleared', [contribution('Security log clearing removes local audit history', 70)], 'The Security log was cleared, reducing locally available investigation history.', 'Authorised maintenance can include clearing logs.', ['Identify the actor and maintenance record.', 'Check forwarded logs and endpoint evidence around the clearing.', 'Confirm logging continued afterward.']),
-    SERVICE_INSTALLED: defineRule('Windows service installed', [contribution('Service installation event', 25)], 'A service was installed and may run automatically.', 'Software installers and updates commonly install services.', ['Verify service name, image path, publisher, account, and approved change.']),
-    PS_ENCODED: defineRule('PowerShell encoded-content cue', [contribution('Encoded command switch or Base64 conversion in PowerShell context', 40)], 'The command or script contains an encoded-command switch or Base64 conversion.', 'Legitimate automation can use encoded content.', scriptNext),
-    PS_DOWNLOAD_EXECUTE: defineRule('PowerShell download-and-execute cue', [contribution('Download and dynamic evaluation patterns in one PowerShell record', 60)], 'The same command or script contains download and dynamic evaluation expressions.', 'Approved bootstrap scripts and deployment tooling can use this pattern.', scriptNext),
-    OFFICE_SHELL_CHILD: defineRule('Office application launched a shell or script host', [contribution('Office parent and shell/script-host child paths in the same process record', 40)], 'An Office application is recorded as the creator of a shell or script host.', 'Approved macros and add-ins can launch these tools.', scriptNext),
-    SCRIPT_HOST_REMOTE: defineRule('Script host command references a remote resource', [contribution('mshta or regsvr32 command with a remote resource argument', 60)], 'The recorded script-host command includes a remote HTTP resource argument.', 'Some approved legacy deployment tools can use remote resources.', scriptNext),
-    ACCOUNT_LOCKED: defineRule('User account locked out', [contribution('Account lockout event', 25)], 'Windows recorded an account lockout.', 'Mistyped passwords or a stale stored credential can lock an account.', authNext),
-    EXPLICIT_CREDENTIALS: defineRule('Explicit credentials used for a logon attempt', [contribution('Explicit-credential logon attempt event', 15)], 'An application attempted a logon using explicitly supplied credentials; this event alone does not establish success.', 'RunAs, scheduled work, and management tools commonly use explicit credentials.', ['Verify the subject, credential account, target server, and process.', 'Look for related successful or failed logons on the target.']),
-    TASK_CREATED: defineRule('Scheduled task created', [contribution('Task creation event', 25)], 'A scheduled task was created.', 'Installers and approved automation commonly create tasks.', ['Review the task name, full task XML, run account, actions, triggers, and approved change.']),
-    TASK_UPDATED: defineRule('Scheduled task updated', [contribution('Task update event', 25)], 'A scheduled task was updated.', 'Approved automation and software maintenance can update tasks.', ['Compare the task definition with the approved version and check its actor.']),
-    TASK_DELETED: defineRule('Scheduled task deleted', [contribution('Task deletion event', 10)], 'A scheduled task was deleted.', 'Cleanup and software removal can delete tasks.', ['Verify the task name and deletion against approved maintenance.']),
-    AUDIT_POLICY_CHANGED: defineRule('System audit policy changed', [contribution('Audit policy change can affect evidence collection', 40)], 'System audit policy changed; inspect the logged subcategory and change values to determine the effect.', 'Group Policy and approved hardening can change audit settings.', ['Review the subcategory and change values.', 'Verify the actor and approved policy change.', 'Check whether expected events continued to be collected.']),
-    FIREWALL_RULE_CHANGED: defineRule('Windows Firewall rule changed', [contribution('Firewall rule change event', 30)], 'A local firewall rule was added, modified, or deleted; the Event ID identifies the action.', 'Installers, administrators, and approved policy changes can alter rules.', ['Review the rule name/ID and profile.', 'Check the resulting firewall policy and approved change.']),
-    FIREWALL_SETTING_CHANGED: defineRule('Windows Firewall setting changed', [contribution('Firewall setting change event', 30)], 'A firewall setting changed; the logged setting and value need interpretation.', 'Approved policy or network configuration changes can explain the event.', ['Review the setting type, value, and profile.', 'Confirm the resulting firewall state and authorised change.'])
-  });
+  const profiles = typeof module !== 'undefined' && module.exports ? require('./rule-profiles.js') : root.EventTriageProfiles;
+  const rules = Object.freeze(profiles.effectiveRules());
 
   function normalizeSettings(input = {}) {
     const values = typeof input === 'number' ? { failureThreshold: input } : input || {};
@@ -449,8 +422,8 @@
     if (/^(?:Administrators|Domain Admins|Enterprise Admins|Schema Admins|Backup Operators|Account Operators|Server Operators|Print Operators)$/i.test(clean(event.group).replace(/^.*\\/, ''))) return true;
     return /^S-1-5-32-(?:544|548|549|550|551)$/i.test(event.groupSid) || /^S-1-5-21-(?:\d+-){3}(?:512|518|519)$/i.test(event.groupSid);
   }
-  function makeFinding(ruleId, events, matchedFields = []) {
-    const rule = rules[ruleId];
+  function makeFinding(ruleId, events, matchedFields = [], activeRules = rules) {
+    const rule = activeRules[ruleId];
     const evidence = [...new Map(events.map(event => [event.uid, event])).values()].sort(eventSort);
     const scoreBreakdown = rule.breakdown.map(item => ({ ...item }));
     const score = scoreBreakdown.reduce((sum, item) => sum + item.points, 0);
@@ -487,26 +460,28 @@
       matched('Failure threshold', settings.failureThreshold), matched('Authentication window', settings.authWindowMinutes + ' minutes'),
       matched('Observed span', ((batch.at(-1).date - first.date) / 60000).toFixed(2) + ' minutes')];
   }
-  function analyze(events, input = {}) {
+  function analyze(events, input = {}, profile = profiles.defaultProfile) {
+    const activeRules = profiles.effectiveRules(profile);
+    const findingFor = (id,evidence,fields) => makeFinding(id,evidence,fields,activeRules);
     const settings = normalizeSettings(input), findings = [], authWindow = settings.authWindowMinutes * 60000, linked = new Set();
     for (const group of groupsBy(events.filter(event => ['4624', '4625'].includes(event.id)), authKey)) {
       const failures = group.filter(event => event.id === '4625');
       for (const success of group.filter(event => event.id === '4624')) {
         const candidates = failures.filter(event => !linked.has(event.uid) && eventSort(event, success) < 0 && success.date - event.date <= authWindow &&
           sameIdentity(event, success) && (!event.logonType || !success.logonType || event.logonType === success.logonType));
-        if (candidates.length >= settings.failureThreshold) {
+        if (candidates.length >= settings.failureThreshold && activeRules.AUTH_SUCCESS_AFTER_FAILURES.enabled) {
           candidates.forEach(event => linked.add(event.uid));
-          findings.push(makeFinding('AUTH_SUCCESS_AFTER_FAILURES', [...candidates, success], authMatch([...candidates, success], settings)));
+          findings.push(findingFor('AUTH_SUCCESS_AFTER_FAILURES', [...candidates, success], authMatch([...candidates, success], settings)));
         }
       }
       for (const identityFailures of groupsBy(failures.filter(event => !linked.has(event.uid)), event => event.accountSid || 'unknown-sid')) {
-        for (const batch of windows(identityFailures, authWindow, batch => batch.length >= settings.failureThreshold)) findings.push(makeFinding('AUTH_FAILURE_BURST', batch, authMatch(batch, settings)));
+        for (const batch of windows(identityFailures, authWindow, batch => batch.length >= settings.failureThreshold)) findings.push(findingFor('AUTH_FAILURE_BURST', batch, authMatch(batch, settings)));
       }
     }
     const sprayEvents = events.filter(event => event.id === '4625' && timed(event) && event.computer && event.ip && identityKey(event));
     for (const group of groupsBy(sprayEvents, event => [lower(event.ip), lower(event.computer), event.timeBasis].join('|'))) {
       for (const batch of windows(group, authWindow, batch => new Set(batch.map(identityKey)).size >= settings.sprayAccountThreshold)) {
-        findings.push(makeFinding('AUTH_PASSWORD_SPRAY', batch, [matched('Source IP', batch[0].ip), matched('Reporting host', batch[0].computer),
+        findings.push(findingFor('AUTH_PASSWORD_SPRAY', batch, [matched('Source IP', batch[0].ip), matched('Reporting host', batch[0].computer),
           matched('Distinct target accounts', new Set(batch.map(identityKey)).size), matched('Account threshold', settings.sprayAccountThreshold),
           matched('Authentication window', settings.authWindowMinutes + ' minutes')]));
       }
@@ -518,8 +493,10 @@
       const created = creations.filter(event => lower(event.computer) === lower(addition.computer) && event.timeBasis === addition.timeBasis &&
         sameIdentity(event, addition) && eventSort(event, addition) < 0 && addition.date - event.date <= settings.accountWindowMinutes * 60000).sort(eventSort).at(-1);
       if (!created) continue;
+      const sequenceRule = privilegedGroup(addition) ? 'ACCOUNT_CREATED_PRIVILEGED_GROUP' : 'ACCOUNT_CREATED_GROUP';
+      if (!activeRules[sequenceRule].enabled) continue;
       linkedAccounts.add(created.uid); linkedAdditions.add(addition.uid);
-      findings.push(makeFinding(privilegedGroup(addition) ? 'ACCOUNT_CREATED_PRIVILEGED_GROUP' : 'ACCOUNT_CREATED_GROUP', [created, addition],
+      findings.push(findingFor(privilegedGroup(addition) ? 'ACCOUNT_CREATED_PRIVILEGED_GROUP' : 'ACCOUNT_CREATED_GROUP', [created, addition],
         [...baseMatch(addition), matched('Group', addition.group || addition.groupSid), matched('Group SID', addition.groupSid), matched('Identity matched by', created.accountSid && addition.accountSid ? 'SID' : 'Account name and domain (including an absent domain)'),
           matched('Account correlation window', settings.accountWindowMinutes + ' minutes'), matched('Observed span', ((addition.date - created.date) / 60000).toFixed(2) + ' minutes')]));
     }
@@ -531,7 +508,7 @@
       let ruleId = singleRules[event.id];
       if (event.id === '4720' && !linkedAccounts.has(event.uid)) ruleId = 'ACCOUNT_CREATED';
       if (['4728', '4732'].includes(event.id) && !linkedAdditions.has(event.uid)) ruleId = privilegedGroup(event) ? 'PRIVILEGED_GROUP_ADDED' : 'GROUP_ADDED';
-      if (ruleId) findings.push(makeFinding(ruleId, [event], [...baseMatch(event), matched('Group', event.group || event.groupSid), matched('Group SID', event.groupSid),
+      if (ruleId) findings.push(findingFor(ruleId, [event], [...baseMatch(event), matched('Group', event.group || event.groupSid), matched('Group SID', event.groupSid),
         matched('Service', event.serviceName), matched('Service image', event.servicePath), matched('Caller computer', event.workstation),
         matched('Credential target server', event.targetServer), matched('Task name', event.taskName),
         matched('Audit subcategory', event.subcategory), matched('Audit changes', event.policyChanges),
@@ -546,18 +523,18 @@
         const encoded = text.match(/(?:^|\s)-(?:encodedcommand|enc|e)(?=\s|:)|\bFromBase64String\s*\(/i);
         const download = text.match(/\b(?:Invoke-WebRequest|Invoke-RestMethod|DownloadString|DownloadFile)\b/i);
         const execute = text.match(/\b(?:Invoke-Expression|IEX)\b/i);
-        if (encoded) findings.push(makeFinding('PS_ENCODED', [event], [...baseMatch(event), matched('Matched expression', encoded[0].trim()), matched('New process path', event.process), matched('Script block ID', event.scriptBlockId), matched('Command/script field', event.id === '4104' ? 'Script block text' : 'Process command line')]));
-        if (download && execute) findings.push(makeFinding('PS_DOWNLOAD_EXECUTE', [event], [...baseMatch(event), matched('Download expression', download[0]), matched('Dynamic evaluation expression', execute[0]), matched('New process path', event.process), matched('Script block ID', event.scriptBlockId)]));
+        if (encoded) findings.push(findingFor('PS_ENCODED', [event], [...baseMatch(event), matched('Matched expression', encoded[0].trim()), matched('New process path', event.process), matched('Script block ID', event.scriptBlockId), matched('Command/script field', event.id === '4104' ? 'Script block text' : 'Process command line')]));
+        if (download && execute) findings.push(findingFor('PS_DOWNLOAD_EXECUTE', [event], [...baseMatch(event), matched('Download expression', download[0]), matched('Dynamic evaluation expression', execute[0]), matched('New process path', event.process), matched('Script block ID', event.scriptBlockId)]));
       }
       if (event.id === '4688' && /^(?:winword|excel|powerpnt|outlook)\.exe$/.test(parentName) && /^(?:cmd|powershell|pwsh|wscript|cscript|mshta)\.exe$/.test(processName)) {
-        findings.push(makeFinding('OFFICE_SHELL_CHILD', [event], [...baseMatch(event), matched('Creator process path', event.parent), matched('New process path', event.process)]));
+        findings.push(findingFor('OFFICE_SHELL_CHILD', [event], [...baseMatch(event), matched('Creator process path', event.parent), matched('New process path', event.process)]));
       }
       if (event.id === '4688' && /^(?:mshta|regsvr32)\.exe$/.test(processName)) {
         const remote = event.command.match(processName === 'mshta.exe' ? /https?:\/\/[^\s"']+/i : /\/i:\s*https?:\/\/[^\s"']+/i);
-        if (remote) findings.push(makeFinding('SCRIPT_HOST_REMOTE', [event], [...baseMatch(event), matched('New process path', event.process), matched('Remote resource argument', remote[0])]));
+        if (remote) findings.push(findingFor('SCRIPT_HOST_REMOTE', [event], [...baseMatch(event), matched('New process path', event.process), matched('Remote resource argument', remote[0])]));
       }
     }
-    return findings.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.score - a.score || a.id.localeCompare(b.id));
+    return findings.filter(finding => activeRules[finding.ruleId].enabled).sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.score - a.score || a.id.localeCompare(b.id));
   }
   function correlationCoverage(events) {
     const authentication = events.filter(event => ['4624', '4625'].includes(event.id));
