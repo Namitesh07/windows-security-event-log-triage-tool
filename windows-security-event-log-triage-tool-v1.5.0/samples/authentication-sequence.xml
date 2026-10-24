@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Events>
+  <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+    <System><Provider Name="Microsoft-Windows-Security-Auditing"/><EventID>4625</EventID><Level>0</Level><TimeCreated SystemTime="2026-10-22T09:00:00.1234567Z"/><EventRecordID>100</EventRecordID><Channel>Security</Channel><Computer>DC-LAB</Computer></System>
+    <EventData><Data Name="TargetUserName">learner</Data><Data Name="TargetDomainName">NORTHWIND</Data><Data Name="IpAddress">198.51.100.42</Data><Data Name="LogonType">3</Data></EventData>
+  </Event>
+  <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+    <System><Provider Name="Microsoft-Windows-Security-Auditing"/><EventID>4625</EventID><Level>0</Level><TimeCreated SystemTime="2026-10-22T09:01:00.1234567Z"/><EventRecordID>101</EventRecordID><Channel>Security</Channel><Computer>DC-LAB</Computer></System>
+    <EventData><Data Name="TargetUserName">learner</Data><Data Name="TargetDomainName">NORTHWIND</Data><Data Name="IpAddress">198.51.100.42</Data><Data Name="LogonType">3</Data></EventData>
+  </Event>
+  <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+    <System><Provider Name="Microsoft-Windows-Security-Auditing"/><EventID>4625</EventID><Level>0</Level><TimeCreated SystemTime="2026-10-22T09:02:00.1234567Z"/><EventRecordID>102</EventRecordID><Channel>Security</Channel><Computer>DC-LAB</Computer></System>
+    <EventData><Data Name="TargetUserName">learner</Data><Data Name="TargetDomainName">NORTHWIND</Data><Data Name="IpAddress">198.51.100.42</Data><Data Name="LogonType">3</Data></EventData>
+  </Event>
+  <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+    <System><Provider Name="Microsoft-Windows-Security-Auditing"/><EventID>4625</EventID><Level>0</Level><TimeCreated SystemTime="2026-10-22T09:03:00.1234567Z"/><EventRecordID>103</EventRecordID><Channel>Security</Channel><Computer>DC-LAB</Computer></System>
+    <EventData><Data Name="TargetUserName">learner</Data><Data Name="TargetDomainName">NORTHWIND</Data><Data Name="IpAddress">198.51.100.42</Data><Data Name="LogonType">3</Data></EventData>
+  </Event>
+  <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+    <System><Provider Name="Microsoft-Windows-Security-Auditing"/><EventID>4625</EventID><Level>0</Level><TimeCreated SystemTime="2026-10-22T09:04:00.1234567Z"/><EventRecordID>104</EventRecordID><Channel>Security</Channel><Computer>DC-LAB</Computer></System>
+    <EventData><Data Name="TargetUserName">learner</Data><Data Name="TargetDomainName">NORTHWIND</Data><Data Name="IpAddress">198.51.100.42</Data><Data Name="LogonType">3</Data></EventData>
+  </Event>
+  <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+    <System><Provider Name="Microsoft-Windows-Security-Auditing"/><EventID>4624</EventID><Level>0</Level><TimeCreated SystemTime="2026-10-22T09:06:00.7654321Z"/><EventRecordID>105</EventRecordID><Channel>Security</Channel><Computer>DC-LAB</Computer></System>
+    <EventData><Data Name="TargetUserName">learner</Data><Data Name="TargetDomainName">NORTHWIND</Data><Data Name="IpAddress">198.51.100.42</Data><Data Name="LogonType">3</Data></EventData>
+  </Event>
+</Events>

@@ -1,0 +1,3 @@
+Event ID,Timestamp,Computer,NewProcessName,ParentProcessName,CommandLine
+4688,2026-10-22T09:00:00Z,WS-LAB,C:\Windows\System32\notepad.exe,C:\Windows\explorer.exe,notepad.exe
+4688,2026-10-22T09:01:00Z,WS-LAB,C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe,C:\Windows\explorer.exe,powershell.exe -NoProfile Get-Date

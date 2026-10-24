@@ -1,0 +1,86 @@
+[
+  {
+    "Id": 4625,
+    "TimeCreated": "2026-10-22T09:00:00.1234567Z",
+    "ProviderName": "Microsoft-Windows-Security-Auditing",
+    "MachineName": "DC-LAB",
+    "LevelDisplayName": "Information",
+    "EventData": {
+      "TargetUserName": "learner",
+      "TargetDomainName": "NORTHWIND",
+      "IpAddress": "198.51.100.42",
+      "LogonType": "3"
+    },
+    "Message": "Fictional failed logon."
+  },
+  {
+    "Id": 4625,
+    "TimeCreated": "2026-10-22T09:01:00.1234567Z",
+    "ProviderName": "Microsoft-Windows-Security-Auditing",
+    "MachineName": "DC-LAB",
+    "LevelDisplayName": "Information",
+    "EventData": {
+      "TargetUserName": "learner",
+      "TargetDomainName": "NORTHWIND",
+      "IpAddress": "198.51.100.42",
+      "LogonType": "3"
+    },
+    "Message": "Fictional failed logon."
+  },
+  {
+    "Id": 4625,
+    "TimeCreated": "2026-10-22T09:02:00.1234567Z",
+    "ProviderName": "Microsoft-Windows-Security-Auditing",
+    "MachineName": "DC-LAB",
+    "LevelDisplayName": "Information",
+    "EventData": {
+      "TargetUserName": "learner",
+      "TargetDomainName": "NORTHWIND",
+      "IpAddress": "198.51.100.42",
+      "LogonType": "3"
+    },
+    "Message": "Fictional failed logon."
+  },
+  {
+    "Id": 4625,
+    "TimeCreated": "2026-10-22T09:03:00.1234567Z",
+    "ProviderName": "Microsoft-Windows-Security-Auditing",
+    "MachineName": "DC-LAB",
+    "LevelDisplayName": "Information",
+    "EventData": {
+      "TargetUserName": "learner",
+      "TargetDomainName": "NORTHWIND",
+      "IpAddress": "198.51.100.42",
+      "LogonType": "3"
+    },
+    "Message": "Fictional failed logon."
+  },
+  {
+    "Id": 4625,
+    "TimeCreated": "2026-10-22T09:04:00.1234567Z",
+    "ProviderName": "Microsoft-Windows-Security-Auditing",
+    "MachineName": "DC-LAB",
+    "LevelDisplayName": "Information",
+    "EventData": {
+      "TargetUserName": "learner",
+      "TargetDomainName": "NORTHWIND",
+      "IpAddress": "198.51.100.42",
+      "LogonType": "3"
+    },
+    "Message": "Fictional failed logon."
+  },
+  {
+    "Id": 4624,
+    "TimeCreated": "2026-10-22T09:06:00.7654321Z",
+    "ProviderName": "Microsoft-Windows-Security-Auditing",
+    "MachineName": "DC-LAB",
+    "LevelDisplayName": "Information",
+    "EventData": {
+      "TargetUserName": "learner",
+      "TargetDomainName": "NORTHWIND",
+      "IpAddress": "198.51.100.42",
+      "LogonType": "3"
+    },
+    "Message": "Fictional successful logon."
+  }
+]
