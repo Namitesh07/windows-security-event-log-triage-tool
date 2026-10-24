@@ -1,63 +1,33 @@
-# Development, CI, and release checks
+# Development and source packaging
 
-The app is static HTML/CSS/JavaScript with no runtime dependencies. Developer scripts require **Node.js 22 or later** and use only built-in Node modules; no npm install or browser build is required.
-
-## Local validation
+The analyser remains static HTML/CSS/JavaScript with no runtime dependencies or build step. Node.js 22+ runs the core checks, Node tests, and source packager. Playwright Test is a pinned development-only dependency for actual browser validation; see [testing](testing.md).
 
 ~~~bash
 npm run check
 npm test
-npm run package -- --check
 npm run package
 ~~~
 
-- check validates JavaScript syntax, catalog generation, engine/catalog IDs, package/tool version consistency, HTML IDs/label references, local asset paths, and local Markdown links. It does not contact external documentation sites.
-- test runs parser, detection, profile, fixture, report, UI-flow, worker, and source-packaging tests. The UI harness is not a full browser or screen-reader audit.
-- package -- --check validates the source-file list without writing an archive.
-- package writes a deterministic source ZIP and SHA-256 file to dist/. Timestamps/order are fixed, entries are uncompressed, and SHA256SUMS.txt covers each bundled source file. The archive excludes Git history, dependencies, prior dist output, and personal input files outside the explicit source list.
+Checks validate syntax, generated rules, catalog/engine IDs, tool/package/lock versions, HTML label references, local assets, and documentation links. Edit rules/catalog.json, run npm run generate:rules, and include the generated asset with the catalog.
 
-To update rules, edit [rules/catalog.json](../rules/catalog.json), run **npm run generate:rules**, and include the regenerated rules.generated.js alongside it. See [rules](rules.md).
+## Runtime files
 
-## Runtime assets
+Script order is **rules.generated.js → rule-profiles.js → analysis.js → inputs.js → report.js → case-file.js → task-runner.js → script.js**. The worker imports the first six modules itself. Keep worker.js with the page at the same origin. Direct-file mode supports small files without a JSON fetch.
 
-Load scripts in this order: **rules.generated.js → rule-profiles.js → analysis.js → inputs.js → report.js → task-runner.js → script.js**. The worker imports the first five modules itself. Keep worker.js at the same path/origin as the page. Both browser and worker paths use the same parser/detection/report modules; the rules asset is checked in for file:// compatibility.
+Serve locally with **python3 -m http.server 8000 --bind 127.0.0.1**. Event imports support 25 MB with workers or 2 MB in fallback mode; saved-case reopening supports 50 MB with workers or 2 MB in fallback mode. Both cap accepted records at 100,000.
 
-Serve locally for worker testing:
+Preserve the violet theme, wide layout, full-width Field Guide followed by Quick Reference, and uppercase creator credit. Review case save/reopen flows, unsaved notes, profile changes, invalid/cancelled inputs, exports, keyboard use, and target devices.
 
-~~~bash
-python3 -m http.server 8000 --bind 127.0.0.1
-~~~
+## Packaging and uploading
 
-Open http://127.0.0.1:8000. Check all five demos, new file formats, invalid/cancelled loads, rule-profile changes/reset, note retention, evidence navigation, exports, keyboard operation, and responsive layout. Direct-file mode has a 2 MB fallback; HTTP(S) worker mode has a 25 MB limit. Both cap accepted records at 100,000.
+The deterministic ZIP now places source files **directly at its root**, including index.html, scripts, docs, samples, tests, tools, and .github/workflows. This avoids an extra project folder when uploading. Copy the archive's extracted contents into the repository root, following [UPGRADE_GUIDE.md](../UPGRADE_GUIDE.md).
 
-The violet theme and wide page are preserved. Field Guide occupies a full-width row above Quick Reference; do not regress these to side-by-side education panels.
+Packaging uses fixed ZIP timestamps and sorted, uncompressed entries. SHA256SUMS.txt covers bundled source bytes. Git history, dependencies, browser binaries, test results, screenshots, and previous dist output are excluded. A checksum checks bytes, not event authenticity.
 
-## Continuous integration
+## CI and releases
 
-[ci.yml](../.github/workflows/ci.yml) runs on branch pushes, pull requests, or manual dispatch:
+[CI](../.github/workflows/ci.yml) runs core checks/tests on Node 22/24, actual Chromium/Firefox/mobile browser flows, and Windows converter smoke/real-EVTX checks. [Release validation](../.github/workflows/release-check.yml) gates source packaging on Windows and browser validation.
 
-- Ubuntu checks/tests and packaging-input validation on Node 22 and 24.
-- Windows PowerShell parsing and mocked-record execution checks for the local EVTX converter. These cover conversion output, literal paths, overwrite refusal, explicit replacement, and failure cleanup; they do not validate real binary EVTX files.
+Workflow permissions are read-only for repository contents and action references are pinned. Checkouts do not persist credentials. Release tags must equal v plus package.json's version, such as **v1.5.0**. Manual dispatch validates the current branch without requiring a tag. Successful runs retain a source ZIP and checksum artifact for 14 days, without publishing a GitHub Release or deploying Pages.
 
-Workflows use read-only contents permissions and pinned action commits. Checkout does not persist credentials. No dependency install, secret, publication token, or deployment credential is needed.
-
-Windows helper checks can also be run from a Windows PowerShell session:
-
-~~~powershell
-.\tests\export-tool.test.ps1
-~~~
-
-## Release validation
-
-[release-check.yml](../.github/workflows/release-check.yml) runs for v* tags or manual dispatch. On a tag, RELEASE_TAG must exactly equal v plus package.json's version, for example **v1.4.0**. Mismatches fail checks/packaging. A manual branch run validates its current version without requiring a tag.
-
-The workflow runs local checks/tests, validates the Windows helper, packages source, and uploads the ZIP/checksum as a **validated-source** workflow artifact retained for 14 days. It does not create a GitHub Release, modify repository contents, deploy Pages, or commit files.
-
-Before your own release:
-
-1. Update package.json/tool version together and update catalog.version if definitions changed. Document changes in [CHANGELOG.md](../CHANGELOG.md).
-2. Run checks/tests and manually review the browser on target devices. Test the converter against authorised real EVTX on Windows if that input path matters to your users.
-3. Inspect the generated ZIP and checksum; ensure all new runtime files and workflow folders are included.
-4. Commit/push the reviewed source yourself. Use a matching version tag when ready and inspect successful workflow results before publishing your release manually.
-
-An archive checksum detects changed bytes; it does not authenticate event data or prove a source file was collected correctly. Keep real operational logs outside this public source package.
+For exact test setup and Windows requirements, read [testing.md](testing.md).

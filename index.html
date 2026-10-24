@@ -5,14 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#08070e">
   <title>Windows Security Event Log Triage Tool</title>
-  <link rel="stylesheet" href="styles.css?v=20261024-footer-type">
-  <script src="rules.generated.js" defer></script>
-  <script src="rule-profiles.js" defer></script>
-  <script src="analysis.js" defer></script>
-  <script src="inputs.js" defer></script>
-  <script src="report.js" defer></script>
-  <script src="task-runner.js" defer></script>
-  <script src="script.js" defer></script>
+  <link rel="stylesheet" href="styles.css?v=20261024-cases">
+  <script src="rules.generated.js?v=1.5.0" defer></script>
+  <script src="rule-profiles.js?v=1.5.0" defer></script>
+  <script src="analysis.js?v=1.5.0" defer></script>
+  <script src="inputs.js?v=1.5.0" defer></script>
+  <script src="report.js?v=1.5.0" defer></script>
+  <script src="case-file.js?v=1.5.0" defer></script>
+  <script src="task-runner.js?v=1.5.0" defer></script>
+  <script src="script.js?v=1.5.0" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -49,6 +50,12 @@
         <button class="button button-primary" id="analyze-button" type="button" disabled>Analyse events <span aria-hidden="true">→</span></button>
         <span id="parse-status" class="status-text" role="status" aria-live="polite">Choose an event export to begin.</span>
       </div>
+      <details class="case-reopen">
+        <summary>Reopen a saved case</summary>
+        <p class="muted small" id="reopen-help">Choose a saved-case JSON file or an entire-dataset JSON report from v1.4.0 or later. Evidence, notes, settings, and the rule profile are restored locally; findings are recalculated. Filtered reports cannot restore a complete case. Limit: 50 MB with background processing, 2 MB in small-file mode.</p>
+        <label for="reopen-case-file">Saved case or full JSON report<input id="reopen-case-file" type="file" accept=".json,application/json" aria-describedby="reopen-help"></label>
+        <p id="reopen-status" class="muted small" role="status"></p>
+      </details>
       <details class="demo-details">
         <summary>Try a fictional demo dataset</summary>
         <p class="muted small">Demo data is fictional and built into the app, so the buttons also work when you open the page directly from your computer.</p>
@@ -87,7 +94,7 @@
       <div id="metrics" class="metrics-grid"></div>
       <details class="panel case-panel" id="case-panel">
         <summary>Case context and analyst notes</summary>
-        <p class="muted small" id="case-help">Notes stay in this tab. Export a JSON report to keep a copy. Loading another dataset starts a new case. Collection timezone is context only; it does not change timestamp parsing.</p>
+        <p class="muted small" id="case-help">Notes stay in this tab until you save the case or export a full JSON report. Reopen the saved file to continue later. Loading another dataset starts a new case. Collection timezone is context only; it does not change timestamp parsing.</p>
         <div class="case-grid">
           <label for="case-title">Case title<input id="case-title" maxlength="200" placeholder="Optional case reference"></label>
           <label for="case-analyst">Analyst<input id="case-analyst" maxlength="120" autocomplete="off"></label>
@@ -98,6 +105,8 @@
       </details>
       <div class="panel export-panel" aria-labelledby="export-title">
         <h3 id="export-title">Keep a report copy</h3>
+        <p class="muted small">Use <strong>Save entire case</strong> to keep all evidence, settings, profiles, and notes, including annotations outside the current findings. Reopen it above to continue your review. Check that the browser saved the download.</p>
+        <button class="button button-secondary" id="save-case" type="button">Save entire case</button>
         <p class="muted small" id="export-help">Exports include all matching rows across pages and only findings whose entire evidence is in scope. Case context is included. JSON preserves original values, rule versions, and effective settings. CSV protects formula-like values for spreadsheet review; use JSON for unchanged strings.</p>
         <div class="export-controls">
           <label for="export-scope">Export scope<select id="export-scope"><option value="all">Entire dataset</option><option value="view">Current evidence and filters</option></select></label>

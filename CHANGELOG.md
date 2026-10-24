@@ -1,6 +1,26 @@
 # Changelog
 
-## Unreleased — v1.4.0 / upgrades 15–18
+## Unreleased — v1.5.0 / upgrades 19–20
+
+### Added
+
+- Save entire case and Reopen a saved case controls, preserving source evidence/locations, notes, annotations, settings, and rule profiles without uploads or automatic storage.
+- Compatibility with entire-dataset schema 1.1 JSON reports from v1.4.0 onward; scoped reports are refused. Saved-case envelope schema is 1.0.
+- Strict validation of record identities, source fields, settings/profiles, note limits, and annotation references; findings are recalculated instead of trusting saved scores.
+- Reopen provenance and notices for tool/rule-version and browser-timezone differences. Failed/cancelled loads preserve the current case.
+- Playwright projects for desktop Chromium, desktop Firefox, and mobile Chromium, covering uploads, downloads, cases, cancellation, safe rendering, focus, and layout.
+- Windows integration checks that create a private fictional log, export genuine EVTX, run the local converter, and verify XML with the shared adapter.
+- CI/release browser and Windows gates, a pinned development-only test dependency, test documentation, and case workflow guidance.
+
+### Compatibility and packaging
+
+- Saved-case reopening supports 50 MB with workers and 2 MB in fallback mode; the existing event-input limits remain unchanged. Default detection conditions/points are unchanged.
+- JSON report schema remains 1.1 with optional caseOrigin provenance; tool version is 1.5.0 and rules version remains 2026-10-22.
+- Source ZIPs now contain project files directly at the archive root, avoiding an extra project folder during upload. Browser binaries, dependencies, screenshots, and test results are excluded.
+- Runtime script and worker URLs carry the tool version so a new upload does not reuse an older cached worker.
+- Node/core tests require Node 22+ without npm install. Browser tests require npm ci and Playwright browser installation; ordinary browser use still requires no installation or build.
+
+## v1.4.0 / upgrades 15–18
 
 ### Fixed
 

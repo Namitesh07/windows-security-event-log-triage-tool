@@ -50,7 +50,7 @@ Case notes remain in the current case across tuning. Finding annotations are ass
 
 Report schema 1.1 includes the exact normalized ruleProfile, the catalog rulesVersion, enabled state, resolved contribution weights, and effective analysis settings. JSON includes every catalog ID, including disabled rules. CSV appends profile JSON. Compare these values when comparing analyses; a profile name/version alone is insufficient.
 
-Source content, timezone context, engine/tool version, and collection completeness also affect results. Reports are snapshots, not importable saved cases or integrity proofs.
+Source content, timezone context, engine/tool version, and collection completeness also affect results. [Saved cases and entire-dataset JSON reports](cases.md) can be reopened with validation and current-engine re-analysis; they are not integrity proofs.
 
 ## Maintain the definitions
 

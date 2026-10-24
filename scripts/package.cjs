@@ -1,7 +1,7 @@
 /* Reproducible dependency-free ZIP (STORE). Source only; no credentials or user logs. */
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const root=path.join(__dirname,'..'),pkg=require('../package.json');
-const rootFiles=['index.html','styles.css','analysis.js','inputs.js','rules.generated.js','rule-profiles.js','report.js','task-runner.js','worker.js','script.js','package.json','README.md','CHANGELOG.md','UPGRADE_GUIDE.md','.gitattributes','.gitignore'];
+const rootFiles=['index.html','styles.css','analysis.js','inputs.js','rules.generated.js','rule-profiles.js','report.js','case-file.js','task-runner.js','worker.js','script.js','package.json','package-lock.json','playwright.config.cjs','README.md','CHANGELOG.md','UPGRADE_GUIDE.md','.gitattributes','.gitignore'];
 const dirs=['.github','docs','rules','samples','scripts','tests','tools'];
 function sourceFiles(){
   const result=[...rootFiles];
@@ -15,7 +15,7 @@ function crc32(bytes){let crc=0xffffffff;for(const byte of bytes)crc=crcTable[(c
 function zip(entries){
   const locals=[],central=[];let offset=0;
   for(const entry of entries){
-    const name=Buffer.from('windows-security-event-log-triage-tool/'+entry.name),data=entry.data,crc=crc32(data);
+    const name=Buffer.from(entry.name),data=entry.data,crc=crc32(data);
     const h=Buffer.alloc(30);h.writeUInt32LE(0x04034b50);h.writeUInt16LE(20,4);h.writeUInt16LE(0x800,6);h.writeUInt16LE(33,12);h.writeUInt32LE(crc,14);h.writeUInt32LE(data.length,18);h.writeUInt32LE(data.length,22);h.writeUInt16LE(name.length,26);
     locals.push(h,name,data);
     const c=Buffer.alloc(46);c.writeUInt32LE(0x02014b50);c.writeUInt16LE(20,4);c.writeUInt16LE(20,6);c.writeUInt16LE(0x800,8);c.writeUInt16LE(33,14);c.writeUInt32LE(crc,16);c.writeUInt32LE(data.length,20);c.writeUInt32LE(data.length,24);c.writeUInt16LE(name.length,28);c.writeUInt32LE(offset,42);central.push(c,name);offset+=h.length+name.length+data.length;

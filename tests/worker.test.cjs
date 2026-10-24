@@ -9,9 +9,9 @@ const project = path.resolve(__dirname,'..');
 const bootstrap = `
   const {parentPort,workerData}=require('node:worker_threads');
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
-  const scope={TextDecoder,postMessage:message=>parentPort.postMessage(message)};scope.self=scope;
+  const scope={TextDecoder,TextEncoder,postMessage:message=>parentPort.postMessage(message)};scope.self=scope;
   const context=vm.createContext(scope);
-  scope.importScripts=(...files)=>files.forEach(file=>vm.runInContext(fs.readFileSync(path.join(workerData.project,file),'utf8'),context));
+  scope.importScripts=(...files)=>files.forEach(file=>vm.runInContext(fs.readFileSync(path.join(workerData.project,file.split('?')[0]),'utf8'),context));
   scope.importScripts('worker.js');
   parentPort.on('message',data=>scope.onmessage({data}));
 `;
@@ -26,7 +26,7 @@ class BrowserWorker {
 }
 function runner(worker=true) {
   const window={location:{protocol:'https:'},Worker:worker ? BrowserWorker : undefined,
-    EventTriageAnalysis:require('../analysis.js'),EventTriageInputs:require('../inputs.js'),EventTriageReports:require('../report.js')};
+    EventTriageAnalysis:require('../analysis.js'),EventTriageInputs:require('../inputs.js'),EventTriageReports:require('../report.js'),EventTriageCases:require('../case-file.js')};
   vm.runInNewContext(fs.readFileSync(path.join(project,'task-runner.js'),'utf8'),{window,setTimeout});
   return new window.EventTriageTasks.TaskRunner();
 }
@@ -79,4 +79,17 @@ for(const format of ['xml','json','jsonl'])test('real worker parses '+format+' a
   const ruleProfile=require('../samples/profiles/lab-tuning.json');
   const findings=await task.run('analyze',{events:parsed.events,ruleProfile,settings:{},bytes:text.length});
   assert.equal(findings[0].score,40);assert.equal(findings[0].events,undefined);assert.equal(findings[0].eventUids.length,6);
+});
+
+for(const worker of [true,false])test((worker?'worker':'fallback')+' saves and reopens a complete case with validated evidence',async()=>{
+  const task=runner(worker),a=require('../analysis'),p=require('../rule-profiles');
+  const text=fs.readFileSync(path.join(project,'samples/authentication-sequence.xml'),'utf8');
+  const parsed=await task.run('parse',{text,format:'xml',bytes:text.length});
+  const findings=a.analyze(parsed.events);
+  const input={events:parsed.events,findings,source:{name:'lab.xml',sizeBytes:text.length,format:'xml'},case:{title:'Reopen me',notes:'Retain notes'},settings:a.DEFAULT_SETTINGS,
+    annotations:{},ruleProfile:p.defaultProfile,diagnostics:parsed.diagnostics,browserTimezone:'UTC',scope:{mode:'all',totalEvents:parsed.events.length}};
+  const saved=await task.run('save-case',{input,bytes:text.length});
+  const restored=await task.run('reopen-case',{file:new Blob([saved]),bytes:Buffer.byteLength(saved),browserTimezone:'UTC'});
+  assert.equal(restored.case.notes,'Retain notes');assert.equal(restored.events.length,6);assert.ok(restored.events[0].date instanceof Date);
+  assert.equal(restored.findings[0].score,60);assert.equal(restored.findings[0].eventUids.length,6);
 });

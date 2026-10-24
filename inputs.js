@@ -146,7 +146,7 @@
       for(const source of text.split(/\r\n|\r|\n/)){line++;if(!source.trim())continue;try{values.push({value:parseJsonDocument(source),line});}catch(error){throw new Error('Invalid JSON on line '+line+': '+error.message);}}
     } else {
       let value;try{value=parseJsonDocument(text);}catch(error){throw new Error('Invalid JSON: '+error.message);}
-      if(plain(value)&&value.schemaVersion&&value.tool)throw new Error('This is a triage report snapshot, not an event input file. Use the original event export or events CSV.');
+      if(plain(value)&&(value.kind==='fieldnotes-case'||value.schemaVersion&&value.tool))throw new Error('This is a saved case or triage report. Use Reopen a saved case below the event chooser.');
       if(plain(value)&&Array.isArray(value.events))value=value.events;
       values=(Array.isArray(value)?value:[value]).map(value=>({value,line:null}));
     }

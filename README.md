@@ -44,8 +44,9 @@ Analysis happens entirely in the browser. The tool does not upload selected even
 - **Report controls:** sort events and findings, select 25/50/100/250 events per page, and navigate paged findings and timelines. Clear filters within one finding or return to the whole dataset.
 - **Portable reports:** download JSON, findings CSV, or events CSV for the entire dataset or current evidence/filters. Exports span all matching pages and include analysis provenance. JSON preserves source strings; CSV guards formula-like cells for spreadsheet review.
 - **Case context:** add a case title, analyst, collection timezone, case notes, and a review status/note for each finding. Notes stay in the tab until you export them; no browser storage is used.
+- **Save and reopen:** download an entire case and continue later with its evidence, notes, settings, and rule profile. Full JSON reports from v1.4.0+ can also be reopened. Findings are recalculated from validated source fields.
 - **Responsive processing:** cancellable Web Worker parsing, analysis, and export when served over HTTP(S). Row inspectors load on demand; large reports use bounded pages. A 2 MB fallback remains available when opening the page directly.
-- **Repeatable checks:** dependency-free regression tests, Node 22/24 CI, Windows converter checks, and reproducible source ZIPs with SHA-256 checksums.
+- **Repeatable checks:** dependency-free Node tests, actual desktop/mobile browser flows, Windows converter smoke and real-EVTX integration checks, and reproducible source ZIPs with SHA-256 checksums. Playwright is used only for development tests.
 
 ## How to use it
 
@@ -54,6 +55,7 @@ Analysis happens entirely in the browser. The tool does not upload selected even
 3. Choose the file, review parsing feedback, adjust the correlation thresholds/windows if needed, and select **Analyse events**. Optionally inspect or load a tuning profile under **Detection rules and optional tuning profile**.
 4. Open **View supporting events** on a finding. Inspect source records, matched fields, and scoring contributions; use **Back to finding** to continue the review.
 5. Sort and filter the evidence, add case or finding notes, then choose an export scope and download JSON or CSV. Use **Entire dataset → Download JSON report** to keep all case notes, including notes from findings removed by a settings change.
+6. Choose **Save entire case** to continue later. Expand **Reopen a saved case** below the event chooser and select the downloaded JSON. Reopening restores the investigation and recalculates findings; invalid or cancelled files preserve the current case.
 
 **Tip:** CSV needs a recognisable **Event ID** column, such as **Event ID**, **EventID**, or **event_id**. XML needs the Windows Event/System structure; JSON accepts event objects, an array, or an events-array wrapper. Timed rules require a timestamp with a time of day and consistent timezone basis. Raw **.evtx** files require [local conversion to XML](tools/Export-TriageEvents.ps1) first; binary EVTX browser parsing remains outside this release.
 
@@ -63,6 +65,7 @@ The output is an **explainable triage signal**, not a probability that an event 
 
 See the [detection and logging guide](docs/detections.md) for exact rule conditions, false-positive context, supported Event IDs, and audit requirements.
 See the [report and case guide](docs/reports.md) for export fields, scope, note retention, and file-size limits.
+See [saving and reopening cases](docs/cases.md) for compatibility, validation, and version/timezone context.
 See [rules and profiles](docs/rules.md) for tuning and [practice cases](samples/README.md) for expected findings. Priority points can change with a profile, so compare the applied profile when comparing reports.
 
 | Result | What it means |
@@ -101,11 +104,11 @@ Opening `index.html` directly uses small-file mode (up to **2 MB**). For backgro
 python3 -m http.server 8000 --bind 127.0.0.1
 ~~~
 
-Then open `http://127.0.0.1:8000`. Keep all JavaScript files beside `index.html`, including the new `rules.generated.js`, `rule-profiles.js`, and `inputs.js`, plus `report.js`, `task-runner.js`, and `worker.js`. Preserve `samples/` and `tools/` for demos and the converter download. Processing remains local. Large or complex datasets still consume memory; **Cancel operation** stops the active worker.
+Then open `http://127.0.0.1:8000`. Keep all JavaScript files beside `index.html`, including `rules.generated.js`, `rule-profiles.js`, `inputs.js`, `report.js`, `case-file.js`, `task-runner.js`, and `worker.js`. Preserve `samples/` and `tools/` for demos and the converter download. Processing remains local. Large or complex datasets still consume memory; **Cancel operation** stops the active worker. Saved-case reopening supports 50 MB with workers and 2 MB in small-file mode.
 
 ## Test the analysis logic
 
-The dependency-free suite covers all input formats, timestamp/extraction rules, profiles, curated fixtures, report scopes/sorting, export safety, note retention, UI flows, and the actual worker script using Node worker threads and structured cloning. UI tests use a lightweight DOM harness; they do not replace manual browser/accessibility testing.
+The dependency-free Node suite covers input formats, detections, profiles, fixtures, case round trips/validation, export safety, notes, UI flows, and actual worker-thread processing. A separate Playwright suite exercises file choosers, workers, downloads, case reopening, cancellation, keyboard focus, markup safety, and responsive layout in actual browsers.
 
 ~~~bash
 npm run check
@@ -113,7 +116,7 @@ npm test
 npm run package
 ~~~
 
-Node.js 22 or later is required only for developer tooling. CI runs Node 22/24 checks and tests plus Windows PowerShell converter checks. Tag/manual release validation creates a source ZIP and checksum as a workflow artifact; it does not publish a release or deploy a site. See [development and release checks](docs/development.md) and the [upgrade guide](UPGRADE_GUIDE.md).
+Node.js 22 or later is required only for developer tooling. For actual browser tests, run `npm ci --ignore-scripts`, `npx playwright install --with-deps chromium firefox`, then `npm run test:browser`. CI includes desktop Chromium, Firefox, mobile Chromium, and Windows PowerShell checks using a private real EVTX fixture. These development dependencies are never loaded by the analyser. See [test setup](docs/testing.md), [development](docs/development.md), and the [upgrade guide](UPGRADE_GUIDE.md).
 
 ## Know the limits
 
@@ -128,7 +131,7 @@ This project is an educational aid for deciding what to inspect next. It does **
 
 English Event Viewer message sections and common structured event fields are supported. Localised messages may need structured EventData fields; original records remain available. XML support is a bounded Windows Event XML subset, not a general XML or XSD validator. JSON must match the [documented event shape](docs/inputs.md). UTF-8 and BOM-marked UTF-16 are supported. ISO fractional seconds up to seven digits are accepted; calculations use millisecond precision and retain original timestamp strings. Timezone-free timestamps use browser-local wall time. PowerShell fragments are inspected separately rather than reassembled. Raw task XML is retained for review.
 
-Reports are snapshots, not importable saved cases or cryptographic evidence records. Collection timezone is analyst context and does not reinterpret dates. Notes are retained across filters, sorting, and re-analysis within the dataset, but starting a new dataset clears the case; export first. Row inspectors shorten individual values above 20,000 characters for display; full values remain in exports.
+Saved cases and full JSON reports can be reopened with validated evidence and recalculated findings. Filtered reports cannot restore a complete case. Files are user-provided snapshots, not cryptographic evidence records. Collection timezone is analyst context and does not reinterpret dates; reopening in a different browser timezone can change timezone-free timestamp interpretation and displays a notice. Save before replacing a dataset. Row inspectors shorten values above 20,000 characters for display; full values remain in exports.
 
 Mistyped passwords, stale service credentials, account management, group changes, services, PowerShell activity, and cleared logs can all be legitimate in the right context. Validate important findings with authorised sources before escalating.
 

@@ -36,10 +36,10 @@ function app() {
   document.createElement=()=>new Element();
   const fakeWindow={confirm:()=>true,addEventListener:(type,handler)=>{windowEvents[type]=handler;}};
   const testTimeout=(callback,delay)=>{const timer=setTimeout(callback,delay);if(delay>1000)timer.unref();return timer;};
-  const context=vm.createContext({window:fakeWindow,document,console,Blob,TextDecoder,setTimeout:testTimeout,clearTimeout,
+  const context=vm.createContext({window:fakeWindow,document,console,Blob,TextDecoder,TextEncoder,setTimeout:testTimeout,clearTimeout,
     URL:{createObjectURL:blob=>{const url='blob:'+urls.size;urls.set(url,blob);return url;},revokeObjectURL:url=>urls.delete(url)},
     Event:class{constructor(type){this.type=type;}}});
-  for(const file of ['rules.generated.js','rule-profiles.js','analysis.js','inputs.js','report.js','task-runner.js','script.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context);
+  for(const file of ['rules.generated.js','rule-profiles.js','analysis.js','inputs.js','report.js','case-file.js','task-runner.js','script.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context);
   return {
     el:id=>elements.get(id), document, downloads, window:fakeWindow, windowEvents,
     load:async (text,name='case.csv')=>{elements.get('csv-file').files=[{name,size:Buffer.byteLength(text),text:async()=>text}];await elements.get('csv-file').trigger('change');await elements.get('analyze-button').trigger('click');},
@@ -48,6 +48,52 @@ function app() {
     evidence:async id=>elements.get('findings').trigger('click',{target:{closest:()=>({dataset:{evidence:id}})}})
   };
 }
+
+test('saved cases restore notes, tuned rules, settings, and all evidence even when the view is filtered',async()=>{
+  const ui=app();await ui.load(fs.readFileSync(path.join(root,'samples/authentication-sequence.json'),'utf8'),'auth.json');
+  ui.el('case-title').value='Follow-up';await ui.el('case-title').trigger('input');
+  ui.el('case-notes').value='Review with owner.';await ui.el('case-notes').trigger('input');
+  const id=ui.el('findings').innerHTML.match(/data-evidence="([^"]+)"/)[1];
+  await ui.el('findings').trigger('input',{target:{dataset:{reviewNote:id},value:'Validate source.',closest:()=>null}});
+  ui.el('auth-window').value='11';await ui.el('auth-window').trigger('change');
+  const profile=JSON.stringify({schemaVersion:'1.0',id:'review-profile',version:'1',rules:{AUTH_SUCCESS_AFTER_FAILURES:{points:[20,20]}}});
+  ui.el('rule-profile-file').files=[{name:'profile.json',size:profile.length,text:async()=>profile}];await ui.el('rule-profile-file').trigger('change');
+  ui.el('event-search').value='no matching event';ui.el('export-scope').value='view';
+  await ui.el('save-case').trigger('click');
+  const download=ui.downloads.at(-1),saved=await download.blob.text(),data=JSON.parse(saved);
+  assert.match(download.name,/-case\.json$/);assert.equal(data.report.scope.mode,'all');assert.equal(data.report.events.length,6);
+  const reopened=app();reopened.el('reopen-case-file').files=[{name:download.name,size:Buffer.byteLength(saved),text:async()=>saved}];
+  await reopened.el('reopen-case-file').trigger('change');
+  assert.equal(reopened.el('report').hidden,false);assert.equal(reopened.el('case-title').value,'Follow-up');
+  assert.equal(reopened.el('case-notes').value,'Review with owner.');assert.equal(reopened.el('auth-window').value,'11');
+  assert.ok(reopened.el('rule-profile-status').textContent.includes('review-profile'));
+  assert.ok(reopened.el('findings').innerHTML.includes('Validate source.'));assert.ok(reopened.el('findings').innerHTML.includes('40 priority points'));
+  assert.equal([...reopened.el('event-rows').innerHTML.matchAll(/data-event-uid=/g)].length,6);
+  assert.match(reopened.el('reopen-status').textContent,/recalculated/);
+});
+test('failed or scoped case imports preserve the current dataset and unsaved notes',async()=>{
+  const ui=app();await ui.sample('account');ui.el('case-notes').value='Keep this note';await ui.el('case-notes').trigger('input');
+  const before=ui.el('event-rows').innerHTML;
+  for(const content of ['not JSON','{"schemaVersion":"1.1","tool":{"name":"Windows Security Event Log Triage Tool"},"scope":{"mode":"view"},"events":[]}']){
+    ui.el('reopen-case-file').files=[{name:'bad.json',size:content.length,text:async()=>content}];await ui.el('reopen-case-file').trigger('change');
+    assert.equal(ui.el('case-notes').value,'Keep this note');assert.equal(ui.el('event-rows').innerHTML,before);
+    assert.equal(ui.el('reopen-case-file').attributes['aria-invalid'],'true');assert.equal(ui.el('save-case').disabled,false);
+  }
+});
+test('declining case replacement and oversized saved cases do not read or replace evidence',async()=>{
+  const ui=app();await ui.sample('account');ui.el('case-notes').value='Unsaved';await ui.el('case-notes').trigger('input');
+  let read=false;ui.window.confirm=()=>false;ui.el('reopen-case-file').files=[{name:'case.json',size:10,text:async()=>{read=true;return '{}';}}];
+  await ui.el('reopen-case-file').trigger('change');assert.equal(read,false);assert.equal(ui.el('case-notes').value,'Unsaved');
+  ui.window.confirm=()=>true;ui.el('reopen-case-file').files=[{name:'huge.json',size:50*1024*1024+1,text:async()=>{read=true;return '{}';}}];
+  await ui.el('reopen-case-file').trigger('change');assert.equal(read,false);assert.match(ui.el('reopen-status').textContent,/50 MB/);
+});
+test('cancelled saved-case reads cannot overwrite a newer selection',async()=>{
+  const ui=app();await ui.sample('account');let resolve;
+  ui.el('reopen-case-file').files=[{name:'pending.json',size:10,text:()=>new Promise(done=>{resolve=done;})}];
+  const pending=ui.el('reopen-case-file').trigger('change');await ui.el('cancel-task').trigger('click');
+  await ui.sample('normal');resolve('{}');await pending;
+  assert.ok(ui.el('file-name').textContent.includes('Normal Windows Activity'));assert.equal(ui.el('reopen-status').textContent,'');
+});
 test('page bootstrap loads and analyzes all five demo buttons', async () => {
   const ui=app();
   for(const key of ['normal','password','account','mixed','advanced']){

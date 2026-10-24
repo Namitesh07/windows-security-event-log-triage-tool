@@ -18,11 +18,12 @@ test('source ZIP is repeatable and its manifest covers the exact source bytes',(
     const first=packageSource(path.join(temporary,'first')),second=packageSource(path.join(temporary,'second'));
     const bytes=fs.readFileSync(first.path);assert.deepEqual(bytes,fs.readFileSync(second.path));
     assert.equal(fs.readFileSync(first.path+'.sha256','utf8'),hash(bytes)+'  '+path.basename(first.path)+'\n');
-    const bundled=entries(bytes),prefix='windows-security-event-log-triage-tool/',manifest=bundled.get(prefix+'SHA256SUMS.txt').toString('utf8').trim().split('\n');
+    const bundled=entries(bytes),prefix='',manifest=bundled.get('SHA256SUMS.txt').toString('utf8').trim().split('\n');
     assert.equal(manifest.length,sourceFiles().length);assert.equal(bundled.size,manifest.length+1);
     for(const line of manifest){const [checksum,name]=line.split('  '),data=bundled.get(prefix+name);assert.ok(data,name);assert.equal(hash(data),checksum);assert.deepEqual(data,fs.readFileSync(path.join(root,name)));}
     for(const name of ['inputs.js','rules.generated.js','rule-profiles.js','.github/workflows/ci.yml','.github/workflows/release-check.yml','tools/Export-TriageEvents.ps1'])assert.ok(bundled.has(prefix+name));
     assert.ok([...bundled.keys()].every(name=>!/(?:^|\/)(?:\.git|node_modules|dist)(?:\/|$)/.test(name)));
+    assert.ok(![...bundled.keys()].some(name=>name.startsWith('windows-security-event-log-triage-tool/')),'source files sit directly at the ZIP root');
   }finally{fs.rmSync(temporary,{recursive:true,force:true});}
 });
 test('source packaging refuses a release tag for a different version',()=>{

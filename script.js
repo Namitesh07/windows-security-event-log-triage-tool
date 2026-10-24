@@ -43,12 +43,14 @@
   const { normalizeSettings, DEFAULT_SETTINGS, severityOrder, eventSort,
     labelById, eventCatalog, logonTypes, accountDisplay, correlationCoverage } = window.EventTriageAnalysis;
   const reports = window.EventTriageReports;
+  const cases = window.EventTriageCases;
   const inputs = window.EventTriageInputs, profiles = window.EventTriageProfiles;
   const runner = new window.EventTriageTasks.TaskRunner();
   const ids = ['csv-file','file-name','analyze-button','parse-status','drop-zone','failure-threshold','auth-window','spray-threshold','account-window','reset-settings','report','report-title','dataset-tag','summary-banner','coverage-note','metrics','findings','finding-count','finding-sort','findings-prev','findings-next','findings-page','top-accounts','top-failures','common-ids','event-search','filter-id','filter-severity','filter-ip','filter-type','event-rows','visible-count','timeline','timeline-title','timeline-prev','timeline-next','timeline-page','event-panel','events-title','evidence-scope','evidence-title','evidence-back','show-all-events','clear-filters','event-sort','page-size','page-first','page-prev','page-next','page-last','page-label','event-reference','cancel-task','task-progress','settings','case-title','case-analyst','case-timezone','case-notes','case-status','export-scope','export-json','export-findings','export-events','export-status'];
   const els = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
   els['processing-bar'] = document.getElementById('processing-bar'); els['task-label'] = document.getElementById('task-label');
   for(const id of ['rule-profile-file','reset-rule-profile','download-rule-profile','rule-profile-status','rule-catalog'])els[id]=document.getElementById(id);
+  for(const id of ['reopen-case-file','reopen-status','save-case'])els[id]=document.getElementById(id);
   const settingIds = { failureThreshold: 'failure-threshold', authWindowMinutes: 'auth-window', sprayAccountThreshold: 'spray-threshold', accountWindowMinutes: 'account-window' };
   const filterIds = ['event-search','filter-id','filter-severity','filter-ip','filter-type'];
   const caseIds = { title:'case-title', analyst:'case-analyst', collectionTimezone:'case-timezone', notes:'case-notes' };
@@ -60,6 +62,7 @@
   let diagnostics = {}, source = {}, analysisSettings = DEFAULT_SETTINGS, analyzedAt = null, annotations = Object.create(null);
   let caseContext = reports.normalizeCase(), orderedFindings = [], noteworthy = [], viewCache = null, searchTimer;
   let currentProfile = profiles.defaultProfile, analysisProfile = profiles.defaultProfile;
+  let caseOrigin = null, datasetBytes = 0;
 
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   const csvEscape = value => '"' + String(value).replaceAll('"', '""') + '"';
@@ -86,8 +89,8 @@
     els['task-progress'].hidden = !value; els['cancel-task'].hidden = !value;
     els.report.setAttribute('aria-busy', String(value)); els['drop-zone'].setAttribute('aria-busy', String(value));
     els['analyze-button'].disabled = value || !currentEvents.length;
-    for (const id of [...Object.values(settingIds),'reset-settings','rule-profile-file','reset-rule-profile','download-rule-profile','export-json','export-findings','export-events'])
-      els[id].disabled = value || (id.startsWith('export-') && !analyzedAt);
+    for (const id of [...Object.values(settingIds),'reset-settings','rule-profile-file','reset-rule-profile','download-rule-profile','reopen-case-file','save-case','export-json','export-findings','export-events'])
+      els[id].disabled = value || ((id.startsWith('export-') || id === 'save-case') && !analyzedAt);
   }
   function invalidateView() { viewCache = null; }
   function resetFilters() { clearTimeout(searchTimer); for (const id of filterIds) els[id].value = ''; page = 0; invalidateView(); }
@@ -122,6 +125,7 @@
       if (token !== taskToken) return;
       currentEvents = result.events; currentFindings = []; selectedFile = name; diagnostics = result.diagnostics;
       source = { name, sizeBytes: payload.bytes || payload.file?.size || 0, lastModified: metadata.lastModified || null, loadedAt: new Date().toISOString(), kind: metadata.kind || result.format, format:result.format };
+      datasetBytes = source.sizeBytes; caseOrigin = null; els['reopen-status'].textContent = '';
       analyzedAt = null; activeEvidenceId = null; page = findingPage = timelinePage = 0;
       eventByUid = new Map(currentEvents.map(event => [event.uid,event]));
       eventPriorities = new Map(); relatedFindings = new Map();
@@ -151,22 +155,11 @@
     const token = ++taskToken, effectiveSettings = settings();
     setBusy(true); setStatus('Correlating events…');
     try {
-      const result = await runner.run('analyze', { events: currentEvents, settings: effectiveSettings, ruleProfile:currentProfile, bytes: source.sizeBytes },
+      const result = await runner.run('analyze', { events: currentEvents, settings: effectiveSettings, ruleProfile:currentProfile, bytes: datasetBytes },
         message => { if (token === taskToken) setStatus(message); });
       if (token !== taskToken) return;
-      currentFindings = result.map(({ eventUids, ...finding }) => ({ ...finding, events: eventUids.map(uid => eventByUid.get(uid)) }));
       analysisSettings = effectiveSettings; analysisProfile=currentProfile; analyzedAt = new Date().toISOString();
-      if (!currentFindings.some(finding => finding.id === activeEvidenceId)) activeEvidenceId = null;
-      eventPriorities = new Map(); relatedFindings = new Map();
-      for (const finding of currentFindings) for (const event of finding.events) {
-        if (!relatedFindings.has(event.uid)) relatedFindings.set(event.uid, []);
-        relatedFindings.get(event.uid).push(finding);
-        const previous = eventPriorities.get(event.uid);
-        if (!previous || severityOrder[finding.severity] < severityOrder[previous]) eventPriorities.set(event.uid, finding.severity);
-      }
-      orderedFindings = reports.sortFindings(currentFindings, els['finding-sort'].value);
-      noteworthy = [...new Map(currentFindings.flatMap(finding => finding.events).map(event => [event.uid,event])).values()].sort(eventSort);
-      invalidateView(); render(); updateCaseStatus();
+      indexFindings(result); render(); updateCaseStatus();
       setStatus('Triage report ready. ' + currentFindings.length + ' findings. Check the correlation coverage note.');
       setBusy(false);
       if (focusReport) { scrollTo(els['report-title']); els['report-title'].focus({ preventScroll: true }); }
@@ -178,6 +171,53 @@
       }
     }
     finally { if (token === taskToken) setBusy(false); }
+  }
+  function indexFindings(result) {
+    currentFindings = result.map(({ eventUids, ...finding }) => ({ ...finding, events:eventUids.map(uid => eventByUid.get(uid)) }));
+    if (!currentFindings.some(finding => finding.id === activeEvidenceId)) activeEvidenceId = null;
+    eventPriorities = new Map(); relatedFindings = new Map();
+    for (const finding of currentFindings) for (const event of finding.events) {
+      if (!relatedFindings.has(event.uid)) relatedFindings.set(event.uid, []);
+      relatedFindings.get(event.uid).push(finding);
+      const previous = eventPriorities.get(event.uid);
+      if (!previous || severityOrder[finding.severity] < severityOrder[previous]) eventPriorities.set(event.uid,finding.severity);
+    }
+    orderedFindings = reports.sortFindings(currentFindings,els['finding-sort'].value);
+    noteworthy = [...new Map(currentFindings.flatMap(finding => finding.events).map(event => [event.uid,event])).values()].sort(eventSort);
+    invalidateView();
+  }
+  async function reopenSavedCase(file) {
+    if (!file || busy) return;
+    if (!file.name.toLowerCase().endsWith('.json') || file.size > cases.MAX_BYTES) {
+      els['reopen-status'].textContent = 'Choose a saved-case JSON file up to 50 MB.'; els['reopen-case-file'].value = ''; return;
+    }
+    if (!mayReplaceDataset()) { els['reopen-case-file'].value = ''; return; }
+    const token = ++taskToken; runner.cancel(); setBusy(true); setStatus('Validating and reopening saved case…');
+    try {
+      const result = await runner.run('reopen-case',{file,bytes:file.size,browserTimezone},message => { if (token === taskToken) setStatus(message); });
+      if (token !== taskToken) return;
+      currentEvents = result.events; eventByUid = new Map(currentEvents.map(event => [event.uid,event]));
+      source = result.source; selectedFile = source.name; datasetBytes = Math.max(source.sizeBytes,file.size);
+      diagnostics = result.diagnostics; currentProfile = analysisProfile = result.ruleProfile; analysisSettings = result.settings;
+      for (const [key,id] of Object.entries(settingIds)) els[id].value = String(analysisSettings[key]);
+      caseContext = result.case; annotations = result.annotations; dirtyNotes = false; noteRevision += 1;
+      for (const [key,id] of Object.entries(caseIds)) els[id].value = caseContext[key];
+      caseOrigin = { ...result.origin,fileName:file.name }; analyzedAt = new Date().toISOString();
+      activeEvidenceId = null; page = findingPage = timelinePage = 0; resetFilters();
+      els['event-sort'].value = 'csv'; els['finding-sort'].value = 'priority'; els['export-scope'].value = 'all';
+      els['file-name'].textContent = selectedFile; els['export-status'].textContent = '';
+      indexFindings(result.findings); renderRuleProfile(); render(); updateCaseStatus();
+      els['reopen-case-file'].setAttribute('aria-invalid','false');
+      els['reopen-status'].textContent = 'Reopened '+file.name+'. '+result.notices.join(' ');
+      setStatus('Saved case reopened: '+currentEvents.length+' events. Evidence, notes, settings, and rule profile restored.');
+      els['report-title'].focus({preventScroll:true});
+    } catch (error) {
+      if (token === taskToken && error.name !== 'AbortError') {
+        els['reopen-case-file'].setAttribute('aria-invalid','true');
+        els['reopen-status'].textContent = error.message;
+        setStatus('Saved case was not opened. The current case remains available.');
+      }
+    } finally { if (token === taskToken) { setBusy(false); els['reopen-case-file'].value = ''; } }
   }
   function render() {
     els.report.hidden = false; els['dataset-tag'].textContent = selectedFile || 'UPLOADED DATA';
@@ -348,28 +388,28 @@
   async function exportReport(format) {
     if (!analyzedAt || busy) return;
     clearTimeout(searchTimer);
-    const token = ++taskToken, exportedRevision = noteRevision, mode = els['export-scope'].value === 'view' ? 'view' : 'all';
+    const token = ++taskToken, exportedRevision = noteRevision, isCase = format === 'case', mode = !isCase && els['export-scope'].value === 'view' ? 'view' : 'all';
     const events = mode === 'view' ? matchingEvents() : reports.selectEvents(currentEvents,eventPriorities,{sort:viewState().sort});
     const scopeUids = new Set(events.map(event => event.uid));
     const findings = orderedFindings.filter(finding => finding.events.every(event => scopeUids.has(event.uid)));
     const input = { events, findings, priorities:[...eventPriorities], annotations:{...annotations}, source:{...source},
-      case:{...caseContext}, settings:analysisSettings, ruleProfile:analysisProfile, analyzedAt, browserTimezone, diagnostics,
+      case:{...caseContext}, settings:analysisSettings, ruleProfile:analysisProfile, analyzedAt, browserTimezone, diagnostics,caseOrigin,
       coverage:correlationCoverage(currentEvents), scope:{mode,totalEvents:currentEvents.length,totalFindings:currentFindings.length,
         evidenceFindingId:mode === 'view' ? activeEvidenceId : null, filters:mode === 'view' ? viewState() : null,
         eventSort:viewState().sort, findingSort:els['finding-sort'].value} };
     setBusy(true); els['export-status'].textContent = 'Preparing download…';
     try {
-      const content = await runner.run('export',{input,format,bytes:source.sizeBytes},message => { if (token === taskToken) setStatus(message); });
+      const content = await runner.run(isCase ? 'save-case' : 'export',{input,format,bytes:datasetBytes},message => { if (token === taskToken) setStatus(message); });
       if (token !== taskToken) return;
-      const isJson = format === 'json', blob = new Blob([content],{type:isJson ? 'application/json;charset=utf-8' : 'text/csv;charset=utf-8'});
+      const isJson = format === 'json' || isCase, blob = new Blob([content],{type:isJson ? 'application/json;charset=utf-8' : 'text/csv;charset=utf-8'});
       const url = URL.createObjectURL(blob), link = document.createElement('a');
-      link.href = url; link.download = reports.filename(caseContext.title || source.name,isJson ? 'report' : format,isJson ? 'json' : 'csv');
+      link.href = url; link.download = reports.filename(caseContext.title || source.name,isCase ? 'case' : isJson ? 'report' : format,isJson ? 'json' : 'csv');
       document.body.appendChild(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url),30000);
       const contents = isJson ? events.length + ' events and ' + findings.length + ' complete findings' : format === 'findings' ? findings.length + ' complete findings' : events.length + ' events';
       els['export-status'].textContent = 'Download prepared: ' + contents + ' in ' +
         (mode === 'all' ? 'the entire dataset.' : 'the current evidence and filters.') + ' Check your browser downloads.';
-      setStatus('Report download prepared.');
+      setStatus(isCase ? 'Saved-case download prepared. Reopen the JSON above to continue later.' : 'Report download prepared.');
       // A full JSON snapshot includes even annotations outside the current rules/settings.
       if (isJson && mode === 'all' && exportedRevision === noteRevision) { dirtyNotes = false; updateCaseStatus(); }
     } catch (error) {
@@ -402,6 +442,8 @@
   });
   renderRuleProfile();
   els['analyze-button'].addEventListener('click',() => runAnalysis(true));
+  els['save-case'].addEventListener('click',() => exportReport('case'));
+  els['reopen-case-file'].addEventListener('change',event => reopenSavedCase(event.target.files?.[0]));
   els['cancel-task'].addEventListener('click',cancelTask);
   els['csv-file'].addEventListener('change',event => loadFile(event.target.files?.[0]));
   document.querySelectorAll('[data-sample]').forEach(button => button.addEventListener('click',async () => {

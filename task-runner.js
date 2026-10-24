@@ -25,12 +25,13 @@
         };
         const fallback = async () => {
           if ((payload.bytes || payload.file?.size || 0) > FALLBACK_LIMIT) {
-            finish(new Error('Background processing is unavailable. Open this app through a local web server or GitHub Pages for files over 2 MB (up to 25 MB).'));
+            const limit = operation === 'reopen-case' ? '50 MB for saved cases' : '25 MB for event files';
+            finish(new Error('Background processing is unavailable. Open this app through a local web server or GitHub Pages for files over 2 MB (up to '+limit+').'));
             return;
           }
           onProgress('Processing locally (small-file mode)…');
           try {
-            const text = operation === 'parse' ? (payload.file ? await root.EventTriageInputs.readFileText(payload.file) : payload.text) : '';
+            const text = ['parse','reopen-case'].includes(operation) ? (payload.file ? await root.EventTriageInputs.readFileText(payload.file) : payload.text) : '';
             // Yield before the bounded fallback so progress and cancellation can be presented.
             await new Promise(done => setTimeout(done, 0));
             if (this.active !== task) return;
@@ -38,20 +39,24 @@
             if (operation === 'parse') {
               result = root.EventTriageInputs.parseInput(text,payload.format || 'csv');
               for (const event of result.events) event._searchText = root.EventTriageReports.searchText(event);
+            } else if (operation === 'reopen-case') {
+              result = root.EventTriageCases.reopenCase(text,{browserTimezone:payload.browserTimezone});
+            } else if (operation === 'save-case') {
+              result = root.EventTriageCases.saveCase(payload.input);
             } else if (operation === 'analyze') {
               result = root.EventTriageAnalysis.analyze(payload.events, payload.settings, payload.ruleProfile)
                 .map(({ events, ...finding }) => ({ ...finding, eventUids: events.map(event => event.uid) }));
-            } else {
+            } else if (operation === 'export') {
               const report = root.EventTriageReports.createReport(payload.input);
               result = payload.format === 'json' ? JSON.stringify(report, null, 2) : payload.format === 'findings' ?
                 root.EventTriageReports.findingsCsv(report) : root.EventTriageReports.eventsCsv(report);
-            }
+            } else throw new Error('Unknown local operation.');
             finish(null, result);
           } catch (error) { finish(error); }
         };
         if (!root.Worker || !/^https?:$/.test(root.location?.protocol || '')) { fallback(); return; }
         try {
-          task.worker = new root.Worker('worker.js');
+          task.worker = new root.Worker('worker.js?v='+encodeURIComponent(root.EventTriageReports.TOOL_VERSION));
           task.worker.onmessage = ({ data }) => {
             if (this.active !== task) return;
             if (data.type === 'progress') onProgress(data.message);

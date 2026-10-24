@@ -15,6 +15,12 @@ jobs:
           persist-credentials: false
       - run: ./tests/export-tool.test.ps1
         shell: powershell
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: ./tests/export-real-evtx.test.ps1
+        shell: powershell
   validate-and-package:
     needs: windows-helper
     runs-on: ubuntu-latest
@@ -31,6 +37,9 @@ jobs:
           package-manager-cache: false
       - run: npm run check
       - run: npm test
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium firefox
+      - run: npm run test:browser
       - run: npm run package
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:

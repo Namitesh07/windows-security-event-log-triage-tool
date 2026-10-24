@@ -901,6 +901,37 @@ footer {
   max-width:82ch;
 }
 
+.case-reopen {
+  margin-top:18px;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+}
+
+.case-reopen summary {
+  cursor:pointer;
+  color:var(--accent);
+}
+
+.case-reopen label {
+  display:grid;
+  gap:8px;
+  font-size:.82rem;
+  color:var(--muted);
+}
+
+.case-reopen input {
+  width:100%;
+  padding:10px;
+  border:1px solid var(--control-line);
+  border-radius:8px;
+  color:var(--text);
+  background:var(--control-bg);
+}
+
+#save-case {
+  margin-bottom:12px;
+}
+
 .creator-credit {
   flex:0 0 auto;
   max-width:100%;

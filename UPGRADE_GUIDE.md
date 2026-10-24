@@ -1,36 +1,46 @@
-# Apply upgrades 15–18: formats, rules, practice cases, and checks
+# Apply upgrades 19–20: validation and saved cases
 
-This complete v1.4.0 source package was prepared from main commit **0ddc7bdf4b4966983c3302d4cd3b75b21ade6af9** (v1.3.1). It preserves the violet theme, wide layout, and full-width Field Guide followed by Quick Reference. No Git history, credentials, installed dependencies, commit, tag, release, or deployment is included.
+This complete **v1.5.0** source package is based on main commit **5499dd6f61fedc6ae2fbc75cde4abc7b49b35d45**. It preserves the corrected root layout, current theme, stacked education panels, and uppercase creator credit. No commit, push, tag, release, or deployment was made for this package.
 
-## Apply the files
+## Upload the contents into the repository root
 
-1. Extract the ZIP and open its windows-security-event-log-triage-tool folder.
-2. Copy that folder's contents into your repository checkout. Keep your checkout's Git history and unrelated local work. Review overlaps if main has changed since the base commit.
-3. Include .github/workflows/, .gitattributes, and .gitignore when copying; some file managers hide these entries.
-4. With Node.js 22 or later, run **npm run check**, **npm test**, and **npm run package**. No npm install is required.
-5. Serve the folder locally, for example **python3 -m http.server 8000 --bind 127.0.0.1**, and open http://127.0.0.1:8000. Check demos, XML/JSON/JSONL imports, profile changes, source inspectors, notes, exports, keyboard navigation, and your target devices.
-6. Review git status and git diff, then commit/push the files yourself when ready. Existing GitHub Pages settings remain yours to manage.
+1. Extract the ZIP into an empty folder. You should immediately see **index.html**, **styles.css**, **package.json**, and folders such as docs, scripts, tests, tools, and .github.
+2. Open that extraction folder and copy/select **its contents**. Do not upload the extraction folder as an additional project directory.
+3. Put the files in your existing repository root, beside the current README.md and index.html, replacing overlapping files after reviewing local work.
+4. Include **.github/workflows/**, **.gitattributes**, and **.gitignore**. Confirm that the two workflow YAML files appear under the repository's root .github/workflows directory.
+5. Keep your repository's Git history and unrelated work. Do not upload node_modules, browser binaries, test-results, playwright-report, or dist.
+6. Review your changes and commit them yourself when ready.
 
-Suggested commit description: **Add multi-format event imports, versioned rule profiles, practice cases, and CI checks**.
+Suggested upload description: **Add saved-case reopening and browser/Windows validation**.
 
-## What ships
+## Validate
 
-| Upgrade | Main additions |
-| --- | --- |
-| 15 — Input formats | inputs.js; Windows Event XML, JSON, JSONL/NDJSON; encoding/source-location handling; local PowerShell EVTX-to-XML converter; input guide |
-| 16 — Versioned rules | Canonical rules/catalog.json, generated browser asset, validated profiles, visible rule catalog, profile export/provenance |
-| 17 — Learning material | Seven curated cases, manifest, optional sample profile, fixture exercises, input/rule/development documentation |
-| 18 — Checks and packaging | Node 22/24 CI, Windows helper checks, tag/version validation, reproducible source ZIP with per-file checksums, regression coverage |
+With Node.js 22+:
 
-[Development documentation](docs/development.md) lists the runtime script order. Upload all new runtime files together; replacing only index.html and script.js will break loading.
+~~~bash
+npm run check
+npm test
+npm run package
+~~~
 
-## Compatibility and validation
+For actual browser checks:
 
-- CSV, the five existing demo buttons, and default detection scores remain supported. Profiles are optional.
-- Direct-file mode remains limited to 2 MB; worker mode supports 25 MB. Both enforce 100,000 accepted events. XML/JSON adapters also bound field counts and nesting.
-- Raw EVTX requires local Windows conversion; the browser does not parse its binary format. Windows automated checks mock records, so validate conversion against your authorised real EVTX collection.
-- Report schema is **1.1**, tool version **1.4.0**, and rules version **2026-10-22**. New CSV provenance columns are appended; legacy CSV-row columns are blank for other formats. See [reports](docs/reports.md).
-- Packaging produces dist/windows-security-event-log-triage-tool-v1.4.0.zip and its .sha256 file. SHA256SUMS.txt inside the archive covers each source file.
-- GitHub Actions starts after you add the workflows to your repository. Tagged v* release validation requires a tag matching package.json; a successful run retains an archive artifact without creating a release or deploying the site.
+~~~bash
+npm ci --ignore-scripts
+npx playwright install --with-deps chromium firefox
+npm run test:browser
+~~~
+
+Windows PowerShell checks are documented in [docs/testing.md](docs/testing.md); the real-EVTX integration test requires Windows administrator rights to create its own temporary fictional event log.
+
+Serve the project locally and confirm Save entire case → Reopen a saved case restores notes, settings, profiles, and evidence. Test failed/cancelled input, downloads, keyboard use, and mobile layout. The live demo reflects your repository deployment, not this uncommitted ZIP.
+
+## What changed
+
+- **Upgrade 19:** Real-browser test projects for desktop Chromium, desktop Firefox, and mobile Chromium; checks for file uploads, downloads, cancellation, notes, case reopening, markup safety, focus, and layout. Windows integration creates a genuine EVTX fixture and validates converter output through the shared XML adapter. CI/release jobs include these checks.
+- **Upgrade 20:** Local full-case saving and reopening, compatible entire-dataset JSON reports from v1.4.0+, strict validation, current-engine re-analysis, retained annotations, and version/timezone provenance.
+- **Packaging:** Flat ZIP source layout, pinned browser test dependency/lockfile, updated documentation and changelog. No runtime dependency or server-side analysis was added.
+
+Saved cases use envelope schema 1.0; JSON reports remain schema 1.1 with tool version 1.5.0 and unchanged rule catalog version 2026-10-22. Default rules/scores are unchanged. Case reopening supports 50 MB with workers and 2 MB in fallback mode. See [docs/cases.md](docs/cases.md).
 
 Use [CHANGELOG.md](CHANGELOG.md) and the repository's [Releases page](https://github.com/Namitesh07/windows-security-event-log-triage-tool/releases) for release information.

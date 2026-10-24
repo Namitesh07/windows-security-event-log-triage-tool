@@ -2,7 +2,7 @@
 (function exposeReports(root) {
   'use strict';
   const analysis = typeof module !== 'undefined' && module.exports ? require('./analysis.js') : root.EventTriageAnalysis;
-  const TOOL_VERSION = '1.4.0';
+  const TOOL_VERSION = '1.5.0';
   const profiles = typeof module !== 'undefined' && module.exports ? require('./rule-profiles.js') : root.EventTriageProfiles;
   const RULES_VERSION = profiles.catalog.version;
   const { severityOrder, eventSort, accountDisplay, labelById, rules, normalizeSettings, correlationCoverage } = analysis;
@@ -66,6 +66,7 @@
       schemaVersion: '1.1', tool: { name: 'Windows Security Event Log Triage Tool', version: TOOL_VERSION, rulesVersion: RULES_VERSION },
       ruleProfile,
       generatedAt: input.generatedAt || new Date().toISOString(), analyzedAt: input.analyzedAt,
+      caseOrigin: input.caseOrigin || null,
       source: input.source, case: normalizeCase(input.case), settings: normalizeSettings(input.settings),
       timestampContext: { browserTimezone: input.browserTimezone || 'Unknown',
         interpretation: 'Offset timestamps use their explicit offset. Timezone-free timestamps use browser-local wall time. The case timezone is an analyst note and does not reinterpret timestamps.' },
@@ -81,7 +82,8 @@
       events: events.map(({ _searchText, ...event }) => ({ ...event, reviewPriority: priorities.get(event.uid) || 'Informational' })),
       limitations: ['Educational review cues do not prove malicious activity.',
         'CSV spreadsheet protection changes formula-like cells; JSON preserves the original strings.',
-        'This is a report snapshot, not an importable case file or a cryptographic evidence record.']
+        'Full-dataset JSON can be reopened with validated evidence and recalculated findings; filtered reports cannot restore a complete case.',
+        'Reports and saved cases are user-provided data, not cryptographic evidence records.']
     };
   }
   function csvCell(value) {

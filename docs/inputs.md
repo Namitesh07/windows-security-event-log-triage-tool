@@ -75,7 +75,7 @@ Recognised metadata aliases include Event ID/EventId/Id, Date and Time/TimeCreat
 
 Use ISO timestamp strings where possible. Microsoft /Date(epochMilliseconds±offset)/ values are converted to a UTC ISO timestamp for analysis; the original JSON value is retained. Numeric Event IDs are supported. Large integer identifiers must be strings: unsafe integer numbers, non-finite numeric results, duplicate JSON keys (including escaped equivalents), conflicting metadata aliases, and normalized field-name collisions are rejected instead of silently changing evidence.
 
-Original JSON record contains a serialized copy of the parsed object. Property strings are preserved, but whitespace, escape spelling, and number formatting are not a byte-for-byte copy of the file. JSON records have 1-based record numbers; source line is null because object positions are not tracked. Downloaded triage report snapshots are not accepted as event imports.
+Original JSON record contains a serialized copy of the parsed object. Property strings are preserved, but whitespace, escape spelling, and number formatting are not a byte-for-byte copy of the file. JSON records have 1-based record numbers; source line is null because object positions are not tracked. To reopen saved cases or full triage reports, use the separate [Reopen a saved case](cases.md) control.
 
 ## JSON Lines / NDJSON
 
@@ -102,7 +102,7 @@ Choose an existing output directory and a new .xml filename. The helper reads th
 
 Existing output is refused unless you explicitly supply -Force. The helper writes a temporary partial file and promotes it after successful conversion, cleaning up its own temporary output on failure. It does not collect live channels, upload data, or change Windows auditing settings. Follow your machine's existing PowerShell execution policy.
 
-Open the resulting XML with the browser file chooser. Conversion may need access to the selected file and a Windows system with the event-log API. Automated Windows checks use mocked records; validate conversion against your authorised real EVTX collection before relying on it operationally.
+Open the resulting XML with the browser file chooser. Conversion needs access to the selected file and Windows event-log APIs. Automated Windows checks include both mocked records and a genuine EVTX fixture exported from a private fictional log; see [testing](testing.md). Validate against representative authorised collections for your own environment.
 
 ## Source references
 
