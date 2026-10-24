@@ -904,30 +904,21 @@ footer {
 .creator-credit {
   flex:0 0 auto;
   max-width:100%;
-  padding:14px 18px;
-  border:1px solid var(--line);
-  border-radius:12px;
-  background:linear-gradient(135deg,#271a33,#14101c);
+  font-size:.7rem;
   text-align:right;
+  text-transform:uppercase;
 }
 
 .creator-credit h2 {
-  margin:0 0 5px;
+  margin:0 0 6px;
   font:inherit;
-  font-size:.58rem;
-  color:var(--muted);
-  text-transform:uppercase;
-  letter-spacing:.13em;
+  color:inherit;
 }
 
 .creator-credit p {
   margin:0;
-  font-family:'Segoe UI',Arial,sans-serif;
-  font-size:1rem;
-  font-weight:650;
-  line-height:1.35;
-  letter-spacing:0;
-  color:var(--pink);
+  font:inherit;
+  color:inherit;
   overflow-wrap:anywhere;
 }
 
