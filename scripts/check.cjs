@@ -15,7 +15,7 @@ function check(){
   if(new Set(ids).size!==ids.length)throw new Error('Duplicate HTML IDs.');
   for(const match of html.matchAll(/\b(?:for|aria-labelledby|aria-describedby)="([^"]+)"/g))for(const id of match[1].split(/\s+/))if(!ids.includes(id))throw new Error('Unresolved accessible label: '+id);
   const scripts=[...html.matchAll(/<script\b[^>]*src="([^"]+)"/g)].map(match=>match[1]);
-  const required=['rules.generated.js','rule-profiles.js','analysis.js','inputs.js','report.js','case-file.js','task-runner.js','script.js'];
+  const required=['rules.generated.js','rule-profiles.js','analysis.js','inputs.js','collection.js','report.js','case-file.js','task-runner.js','script.js'];
   if(required.some((script,index)=>scripts[index]!==script+'?v='+pkg.version))throw new Error('Runtime scripts are missing, out of order, or have a stale cache version.');
   if(!fs.readFileSync(path.join(root,'worker.js'),'utf8').includes("const ASSET_VERSION = '"+pkg.version+"';"))throw new Error('Worker asset cache version is stale.');
   const localTarget=(target,base)=>{if(/^(?:https?:|mailto:|#)/.test(target))return;const file=decodeURIComponent(target.split(/[?#]/)[0]);if(!file)return;const resolved=path.resolve(base,file);if(!resolved.startsWith(root+path.sep)||!fs.existsSync(resolved))throw new Error('Unresolved local link: '+target);};

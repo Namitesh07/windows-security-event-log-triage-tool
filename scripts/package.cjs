@@ -1,7 +1,7 @@
 /* Reproducible dependency-free ZIP (STORE). Source only; no credentials or user logs. */
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const root=path.join(__dirname,'..'),pkg=require('../package.json');
-const rootFiles=['index.html','styles.css','analysis.js','inputs.js','rules.generated.js','rule-profiles.js','report.js','case-file.js','task-runner.js','worker.js','script.js','package.json','package-lock.json','playwright.config.cjs','README.md','CHANGELOG.md','UPGRADE_GUIDE.md','.gitattributes','.gitignore'];
+const rootFiles=['index.html','styles.css','analysis.js','inputs.js','collection.js','rules.generated.js','rule-profiles.js','report.js','case-file.js','task-runner.js','worker.js','script.js','package.json','package-lock.json','playwright.config.cjs','README.md','CHANGELOG.md','UPGRADE_GUIDE.md','.gitattributes','.gitignore'];
 const dirs=['.github','docs','rules','samples','scripts','tests','tools'];
 function sourceFiles(){
   const result=[...rootFiles];
