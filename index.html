@@ -5,15 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#08070e">
   <title>Windows Security Event Log Triage Tool</title>
-  <link rel="stylesheet" href="styles.css?v=20261024-cases">
-  <script src="rules.generated.js?v=1.5.0" defer></script>
-  <script src="rule-profiles.js?v=1.5.0" defer></script>
-  <script src="analysis.js?v=1.5.0" defer></script>
-  <script src="inputs.js?v=1.5.0" defer></script>
-  <script src="report.js?v=1.5.0" defer></script>
-  <script src="case-file.js?v=1.5.0" defer></script>
-  <script src="task-runner.js?v=1.5.0" defer></script>
-  <script src="script.js?v=1.5.0" defer></script>
+  <link rel="stylesheet" href="styles.css?v=20261025-collections">
+  <script src="rules.generated.js?v=1.6.0" defer></script>
+  <script src="rule-profiles.js?v=1.6.0" defer></script>
+  <script src="analysis.js?v=1.6.0" defer></script>
+  <script src="inputs.js?v=1.6.0" defer></script>
+  <script src="collection.js?v=1.6.0" defer></script>
+  <script src="report.js?v=1.6.0" defer></script>
+  <script src="case-file.js?v=1.6.0" defer></script>
+  <script src="task-runner.js?v=1.6.0" defer></script>
+  <script src="script.js?v=1.6.0" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -38,12 +39,12 @@
         <div><p class="eyebrow">01 / OPEN A CASE</p><h2 id="ingest-title">Bring in a Windows event export</h2></div>
         <span class="step-chip">CSV · XML · JSON · JSONL</span>
       </div>
-      <p class="muted" id="file-help">Choose a CSV, Windows Event XML, JSON, or JSON Lines export. Raw <code>.evtx</code> files need local conversion first; see the input guide below. Hosted background mode supports up to 25 MB and 100,000 events. Opening this page directly uses small-file mode (up to 2 MB).</p>
+      <p class="muted" id="file-help">Choose up to 20 CSV, Windows Event XML, JSON, or JSON Lines exports together. Raw <code>.evtx</code> files need local conversion first; see the input guide below. Limit: 25 MB combined and 100,000 source records, including duplicates. Small-file mode supports 2 MB combined. A new selection replaces the current collection.</p>
       <label class="drop-zone" id="drop-zone" for="csv-file">
-        <input id="csv-file" type="file" accept=".csv,.xml,.json,.jsonl,.ndjson,text/csv,application/json,application/xml" aria-label="Choose a Windows event export" aria-describedby="file-help">
+        <input id="csv-file" type="file" multiple accept=".csv,.xml,.json,.jsonl,.ndjson,text/csv,application/json,application/xml" aria-label="Choose Windows event exports" aria-describedby="file-help">
         <span class="upload-icon" aria-hidden="true">↑</span>
-        <strong>Choose an event export or drag it here</strong>
-        <span class="muted small">Your file stays in this browser tab.</span>
+        <strong>Choose event exports or drag them here</strong>
+        <span class="muted small">Your files stay in this browser tab.</span>
         <span id="file-name" class="file-name" aria-live="polite">No file selected</span>
       </label>
       <div class="action-row">
@@ -90,6 +91,17 @@
       <div class="report-title-row"><div><p class="eyebrow">02 / TRIAGE REPORT</p><h2 id="report-title" tabindex="-1">What stands out</h2></div><div id="dataset-tag" class="step-chip">UPLOADED DATA</div></div>
       <div id="summary-banner" class="summary-banner"></div>
       <p id="coverage-note" class="coverage-note"></p>
+      <details class="panel collection-panel">
+        <summary>Source files and duplicate handling</summary>
+        <p id="source-summary" class="muted small"></p><ul id="source-list" class="source-list"></ul>
+        <p class="muted small">Confirmed overlaps from different files are excluded from rules, snapshots, and timed correlations. Every original record stays in the evidence table and full exports. Matching requires the same host, channel, provider, Windows record ID, timestamp, Event ID, and source-field values. Records with missing identity or different field layouts are retained for review. No fuzzy matching is used.</p>
+      </details>
+      <details class="panel coverage-panel">
+        <summary>Per-rule coverage and data gaps</summary>
+        <p id="rule-coverage-summary" class="muted small"></p>
+        <p class="muted small">Assessed means the required inputs are available. It does not prove that the collection is complete or the activity is absent. Open a rule to see missing fields, companion events, and logging context.</p>
+        <div id="rule-coverage-list" class="rule-coverage-list"></div>
+      </details>
       <details class="priority-guide"><summary>How review priority works</summary><p>High: 60+ points, investigate promptly. Medium: 30–59 points, investigate with context. Low: 1–29 points, validate routine activity. Informational: 0 points, context only. Each finding shows its rule and contributing points. Scores are educational priority aids and are not added into a dataset risk score.</p></details>
       <div id="metrics" class="metrics-grid"></div>
       <details class="panel case-panel" id="case-panel">
@@ -130,6 +142,8 @@
           <label>Review priority<select id="filter-severity"><option value="">All review priorities</option><option>High</option><option>Medium</option><option>Low</option><option>Informational</option></select></label>
           <label>Exact source IP<input id="filter-ip" type="search" placeholder="All source IPs"></label>
           <label>Event type<select id="filter-type"><option value="">All event types</option></select></label>
+          <label>Source file<select id="filter-source"><option value="">All source files</option></select></label>
+          <label>Duplicate records<select id="filter-duplicates"><option value="">All original records</option><option value="unique">Included in analysis</option><option value="duplicates">Confirmed duplicates only</option></select></label>
         </div>
         <div class="view-controls"><label for="event-sort">Sort events<select id="event-sort"><option value="csv">Source record order</option><option value="time-asc">Time: oldest first</option><option value="time-desc">Time: newest first</option><option value="priority">Highest review priority</option><option value="id">Event ID</option><option value="account">Account</option><option value="source">Source</option></select></label><label for="page-size">Events per page<select id="page-size"><option>25</option><option>50</option><option selected>100</option><option>250</option></select></label></div>
         <p class="muted small" id="table-help">Scroll within the table to inspect all columns. Sorting by time keeps unparsed timestamps last. Open a row to load its original evidence.</p>

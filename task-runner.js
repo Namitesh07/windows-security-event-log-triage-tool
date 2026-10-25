@@ -24,7 +24,10 @@
           if (error) reject(error); else resolve(result);
         };
         const fallback = async () => {
-          if ((payload.bytes || payload.file?.size || 0) > FALLBACK_LIMIT) {
+          let bytes = payload.bytes || payload.file?.size || 0;
+          try { if (operation === 'parse-files') bytes = root.EventTriageCollection.validateFiles(payload.files); }
+          catch (error) { finish(error); return; }
+          if (bytes > FALLBACK_LIMIT) {
             const limit = operation === 'reopen-case' ? '50 MB for saved cases' : '25 MB for event files';
             finish(new Error('Background processing is unavailable. Open this app through a local web server or GitHub Pages for files over 2 MB (up to '+limit+').'));
             return;
@@ -36,7 +39,10 @@
             await new Promise(done => setTimeout(done, 0));
             if (this.active !== task) return;
             let result;
-            if (operation === 'parse') {
+            if (operation === 'parse-files') {
+              result = await root.EventTriageCollection.parseFiles(payload.files,message => { if (this.active === task) onProgress(message); },() => this.active === task);
+              for (const event of result.events) event._searchText = root.EventTriageReports.searchText(event);
+            } else if (operation === 'parse') {
               result = root.EventTriageInputs.parseInput(text,payload.format || 'csv');
               for (const event of result.events) event._searchText = root.EventTriageReports.searchText(event);
             } else if (operation === 'reopen-case') {
@@ -44,8 +50,9 @@
             } else if (operation === 'save-case') {
               result = root.EventTriageCases.saveCase(payload.input);
             } else if (operation === 'analyze') {
-              result = root.EventTriageAnalysis.analyze(payload.events, payload.settings, payload.ruleProfile)
-                .map(({ events, ...finding }) => ({ ...finding, eventUids: events.map(event => event.uid) }));
+              const findings = root.EventTriageAnalysis.analyze(payload.events, payload.settings, payload.ruleProfile);
+              result = findings.map(({ events, ...finding }) => ({ ...finding, eventUids: events.map(event => event.uid) }));
+              if (payload.includeCoverage) result = {findings:result,ruleCoverage:root.EventTriageAnalysis.ruleCoverage(payload.events,findings,payload.ruleProfile,payload.settings)};
             } else if (operation === 'export') {
               const report = root.EventTriageReports.createReport(payload.input);
               result = payload.format === 'json' ? JSON.stringify(report, null, 2) : payload.format === 'findings' ?

@@ -199,7 +199,11 @@
     text=text.replace(/^\uFEFF/,'');
     if(format==='ndjson')format='jsonl';
     let result,records;
-    if(format==='csv')result=analysis.normalizeEvents(analysis.parseCsv(text));
+    if(format==='csv') {
+      const rows=analysis.parseCsv(text);
+      if(rows.length-1>MAX_RECORDS)throw new Error('This export exceeds 100,000 source records, including skipped Event IDs.');
+      result=analysis.normalizeEvents(rows);
+    }
     else {
       records=format==='xml'?parseWindowsXml(text):['json','jsonl'].includes(format)?parseJsonRecords(text,format==='jsonl'):null;
       if(!records)throw new Error('Unsupported event input format.');

@@ -1,3 +1,45 @@
+.collection-panel,.coverage-panel {
+  margin:16px 0;
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+.source-list {
+  padding-left:1.25rem;
+}
+.source-list li {
+  margin:.6rem 0;
+}
+.rule-coverage-list {
+  display:grid;
+  gap:10px;
+}
+.rule-coverage-item {
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:12px 14px;
+  min-width:0;
+}
+.rule-coverage-item > summary {
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:8px 16px;
+  cursor:pointer;
+}
+.rule-coverage-item small {
+  display:block;
+  color:var(--muted);
+  font-size:.72rem;
+}
+.coverage-state,.duplicate-label {
+  color:var(--blue);
+  font-size:.78rem;
+}
+#source-summary,#source-list,#filter-source,.file-name {
+  overflow-wrap:anywhere;
+  min-width:0;
+}
 :root {
   color-scheme:dark;
   --bg:#08070e;

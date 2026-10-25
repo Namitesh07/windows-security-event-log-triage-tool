@@ -355,6 +355,7 @@
       events.push({
         uid, id, index: events.length + 1, lineNumber, timeText, date: timestamp.date, timestampStatus: timestamp.status,
         sourceRecord:row.sourceRecord || index, sourceLine:row.sourceLine === undefined ? lineNumber : row.sourceLine,
+        eventRecordId: column(['EventRecordID', 'RecordId', 'Record ID']), channel: column(['Channel', 'LogName', 'Log Name']),
         hasTime: /\d{1,2}:\d{2}/.test(timeText), timeBasis: /(?:Z|[+-]\d{2}:?\d{2})$/i.test(timeText) ? 'offset' : 'local',
         level: pick(row, map.level), source: pick(row, map.source), task: pick(row, map.task), keywords: pick(row, map.keywords),
         user, actor: actorRaw, actorDomain: actor.domain, account: identity.name, targetAccount: identity.name,
@@ -461,6 +462,7 @@
       matched('Observed span', ((batch.at(-1).date - first.date) / 60000).toFixed(2) + ' minutes')];
   }
   function analyze(events, input = {}, profile = profiles.defaultProfile) {
+    events = events.filter(event => !event.duplicateOf);
     const activeRules = profiles.effectiveRules(profile);
     const findingFor = (id,evidence,fields) => makeFinding(id,evidence,fields,activeRules);
     const settings = normalizeSettings(input), findings = [], authWindow = settings.authWindowMinutes * 60000, linked = new Set();
@@ -537,6 +539,7 @@
     return findings.filter(finding => activeRules[finding.ruleId].enabled).sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.score - a.score || a.id.localeCompare(b.id));
   }
   function correlationCoverage(events) {
+    events = events.filter(event => !event.duplicateOf);
     const authentication = events.filter(event => ['4624', '4625'].includes(event.id));
     const accounts = events.filter(event => ['4720', '4728', '4732'].includes(event.id));
     return {
@@ -545,8 +548,93 @@
       incompleteScripts: events.filter(event => event.id === '4104' && Number(event.scriptFragmentTotal) > 1).length
     };
   }
+  function ruleCoverage(events, findings = [], profile = profiles.defaultProfile, input = {}) {
+    const settings = normalizeSettings(input), activeRules = profiles.effectiveRules(profile);
+    const unique = events.filter(event => !event.duplicateOf);
+    const byId = new Map();
+    for (const event of unique) { if (!byId.has(event.id)) byId.set(event.id,[]); byId.get(event.id).push(event); }
+    const definitions = {
+      AUTH_FAILURE_BURST:['4625'], AUTH_SUCCESS_AFTER_FAILURES:['4625','4624'], AUTH_PASSWORD_SPRAY:['4625'],
+      ACCOUNT_CREATED_GROUP:['4720','4728','4732'], ACCOUNT_CREATED_PRIVILEGED_GROUP:['4720','4728','4732'],
+      ACCOUNT_CREATED:['4720'], ACCOUNT_DELETED:['4726'], GROUP_ADDED:['4728','4732'], PRIVILEGED_GROUP_ADDED:['4728','4732'],
+      AUDIT_LOG_CLEARED:['1102'], SERVICE_INSTALLED:['7045'], PS_ENCODED:['4104','4688'], PS_DOWNLOAD_EXECUTE:['4104','4688'],
+      OFFICE_SHELL_CHILD:['4688'], SCRIPT_HOST_REMOTE:['4688'], ACCOUNT_LOCKED:['4740'], EXPLICIT_CREDENTIALS:['4648'],
+      TASK_CREATED:['4698'], TASK_UPDATED:['4702'], TASK_DELETED:['4699'], AUDIT_POLICY_CHANGED:['4719'],
+      FIREWALL_RULE_CHANGED:['4946','4947','4948'], FIREWALL_SETTING_CHANGED:['4950']
+    };
+    const contextFields = {SERVICE_INSTALLED:['serviceName','servicePath'],ACCOUNT_CREATED:['account'],ACCOUNT_DELETED:['account'],
+      ACCOUNT_LOCKED:['account','workstation'],EXPLICIT_CREDENTIALS:['account','targetServer'],TASK_CREATED:['taskName','taskContent'],
+      TASK_UPDATED:['taskName','taskContent'],TASK_DELETED:['taskName'],AUDIT_POLICY_CHANGED:['subcategory','policyChanges'],
+      FIREWALL_RULE_CHANGED:['firewallRule','firewallProfile'],FIREWALL_SETTING_CHANGED:['firewallSetting','firewallValue']};
+    return Object.entries(activeRules).map(([ruleId,rule]) => {
+      const ids = definitions[ruleId], relevant = ids.flatMap(id => byId.get(id) || []), missing = new Map();
+      let eligibleEvents = 0;
+      const auth = /^AUTH_/.test(ruleId), accountSequence = /^ACCOUNT_CREATED_/.test(ruleId);
+      const requirements = auth ? ['Timestamp with a time of day','Target account or SID','Reporting host',ruleId === 'AUTH_PASSWORD_SPRAY' ? 'Source IP' : 'Source IP or workstation'] :
+        accountSequence ? ['Timestamp with a time of day','Target/member account or SID','Reporting host'] :
+        ruleId.startsWith('PS_') ? ['Script text for 4104; process path and command line for PowerShell 4688'] :
+        ruleId === 'OFFICE_SHELL_CHILD' ? ['New process path','Creator process path'] :
+        ruleId === 'SCRIPT_HOST_REMOTE' ? ['New process path','Command line for mshta/regsvr32'] :
+        ruleId === 'PRIVILEGED_GROUP_ADDED' ? ['Recognised privileged group name or SID'] : ['Event ID (review cue); other fields provide investigation context'];
+      for (const event of relevant) {
+        const absent = [];
+        if (auth || accountSequence) {
+          if (!timed(event)) absent.push('Timestamp with a time of day');
+          if (!identityKey(event)) absent.push('Target/member account or SID');
+          if (!event.computer) absent.push('Reporting host');
+          if (auth && !(ruleId === 'AUTH_PASSWORD_SPRAY' ? event.ip : authSource(event))) absent.push(ruleId === 'AUTH_PASSWORD_SPRAY' ? 'Source IP' : 'Source IP or workstation');
+        }
+        const process = lower(event.process).split(/[\\/]/).at(-1);
+        if (ruleId.startsWith('PS_')) {
+          if (event.id === '4104' && !event.scriptText) absent.push('Script block text');
+          if (event.id === '4688' && !event.process) absent.push('New process path');
+          if (event.id === '4688' && /^(?:powershell|pwsh)(?:\.exe)?$/.test(process) && !event.command) absent.push('PowerShell command line');
+        }
+        if (ruleId === 'OFFICE_SHELL_CHILD') {
+          if (!event.process) absent.push('New process path');
+          if (!event.parent) absent.push('Creator process path');
+        }
+        if (ruleId === 'SCRIPT_HOST_REMOTE') {
+          if (!event.process) absent.push('New process path');
+          if (/^(?:mshta|regsvr32)\.exe$/.test(process) && !event.command) absent.push('Script-host command line');
+        }
+        if (['PRIVILEGED_GROUP_ADDED','ACCOUNT_CREATED_PRIVILEGED_GROUP'].includes(ruleId) && ['4728','4732'].includes(event.id) && !event.group && !event.groupSid) absent.push('Group name or SID');
+        if (!absent.length) eligibleEvents += 1;
+        for (const field of absent) {
+          if (!missing.has(field)) missing.set(field,{field,events:0,exampleEventUids:[]});
+          const detail = missing.get(field); detail.events += 1; if (detail.exampleEventUids.length < 3) detail.exampleEventUids.push(event.uid);
+        }
+      }
+      const missingEventTypes = [];
+      if (ruleId === 'AUTH_SUCCESS_AFTER_FAILURES') for (const id of ['4625','4624']) if (!byId.has(id)) missingEventTypes.push(id);
+      if (accountSequence) {
+        if (!byId.has('4720')) missingEventTypes.push('4720');
+        const privileged = ruleId === 'ACCOUNT_CREATED_PRIVILEGED_GROUP';
+        if (!relevant.some(event => ['4728','4732'].includes(event.id) && privilegedGroup(event) === privileged)) missingEventTypes.push(privileged ? '4728/4732 with a recognised privileged group' : '4728/4732 without a recognised privileged group');
+      }
+      const fragments = relevant.filter(event => event.id === '4104' && Number(event.scriptFragmentTotal) > 1).length;
+      const state = !rule.enabled ? 'disabled' : !relevant.length ? 'no-events' : !eligibleEvents || missingEventTypes.length ? 'insufficient-data' : missing.size || fragments ? 'partial' : 'assessed';
+      const findingCount = findings.filter(finding => finding.ruleId === ruleId).length;
+      let explanation = !rule.enabled ? 'Disabled by the active rule profile; no finding can be emitted.' :
+        !relevant.length ? 'No relevant Event IDs were included. This does not establish that the activity did not occur or that auditing is enabled.' :
+        state === 'insufficient-data' ? 'Required fields or companion event types are missing. Review the gaps before drawing conclusions.' :
+        state === 'partial' ? 'Some relevant records lack required fields or contain script fragments; the engine assessed the available fields and text.' :
+        'Required input fields are available. No emitted finding can also mean conditions or thresholds were not met, or a more specific sequence used the evidence.';
+      if (auth || accountSequence) explanation += ' Timed matches also require compatible identity, host, source (authentication), timezone basis, order, and configured windows.';
+      const warnings = [];
+      if (fragments) warnings.push(fragments+' script block record(s) are fragments; cues spanning fragments are not reconstructed.');
+      for (const field of contextFields[ruleId] || []) {
+        const count = relevant.filter(event => !event[field]).length;
+        if (count) warnings.push(count+' record(s) lack '+field+' context; the Event ID review cue still runs.');
+      }
+      return {ruleId,title:rule.title,enabled:rule.enabled,state,relevantEvents:relevant.length,eligibleEvents,excludedEvents:relevant.length-eligibleEvents,
+        findingCount,eventIds:ids,requirements,missingFields:[...missing.values()],missingEventTypes,explanation,warnings,
+        collectionHints:ids.map(id => ({eventId:id,...eventCatalog[id]})),
+        settings:auth ? {failureThreshold:settings.failureThreshold,sprayAccountThreshold:settings.sprayAccountThreshold,authWindowMinutes:settings.authWindowMinutes} : accountSequence ? {accountWindowMinutes:settings.accountWindowMinutes} : {}};
+    });
+  }
   const api = Object.freeze({ parseCsv, parseTimestamp, normalizeEvents, normalizeSettings, analyze, eventSort,
-    labelById, eventCatalog, logonTypes, rules, DEFAULT_SETTINGS, severityForScore, severityOrder, accountDisplay, correlationCoverage });
+    labelById, eventCatalog, logonTypes, rules, DEFAULT_SETTINGS, severityForScore, severityOrder, accountDisplay, correlationCoverage, ruleCoverage });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.EventTriageAnalysis = api;
 })(typeof window !== 'undefined' ? window : globalThis);

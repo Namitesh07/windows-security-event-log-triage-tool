@@ -15,7 +15,7 @@ A privacy-first, educational triage tool — not a verdict that a system is comp
 
 ## The idea
 
-Windows event logs contain valuable investigation clues, but a single Event ID rarely tells the whole story. This project helps students and early-career analysts **spot, group, and understand activity worth reviewing** using visible rules and correlations within the loaded export.
+Windows event logs contain valuable investigation clues, but a single Event ID rarely tells the whole story. This project helps students and early-career analysts **spot, group, and understand activity worth reviewing** using visible rules and correlations within the loaded collection.
 
 Analysis happens entirely in the browser. The tool does not upload selected event files or rule profiles, contact an analysis server, query a threat-intelligence feed, or claim to determine attacker intent.
 
@@ -33,6 +33,8 @@ Analysis happens entirely in the browser. The tool does not upload selected even
 
 ### Built to make the reasoning visible
 
+- **Multiple-file investigations:** select or drop up to 20 event exports together, including different supported formats. Each record keeps its filename, file ID, and original location. Conservative overlap checks keep duplicate evidence visible while excluding confirmed duplicates from rules. See [collections](docs/collections.md).
+- **Per-rule coverage:** inspect assessed, partly assessed, insufficient-data, absent-event, and disabled rules. Missing fields, companion events, emitted findings, and logging context explain the limits of each rule. See [coverage](docs/coverage.md).
 - **Multiple formats:** CSV, Windows Event XML, JSON, and JSON Lines/NDJSON use the same analysis engine. A local Windows PowerShell helper converts EVTX files to XML.
 - **Traceable findings:** stable rule IDs, matched field values, point-by-point score explanations, and links to supporting source records. Inspect original XML/JSON or CSV columns alongside extracted fields, then return to the finding.
 - **Versioned rules:** 23 definitions live in a readable JSON catalog. Optional data-only profiles can disable rules or change contribution points; matching conditions stay fixed in the engine. Exports record the exact profile and resolved weights.
@@ -52,8 +54,8 @@ Analysis happens entirely in the browser. The tool does not upload selected even
 
 1. Open the [live demo](https://namitesh07.github.io/windows-security-event-log-triage-tool/) or run the project locally.
 2. Export the event records you are authorised to inspect as CSV, Windows Event XML, JSON, or JSON Lines. See the [input guide](docs/inputs.md) for accepted shapes and EVTX conversion.
-3. Choose the file, review parsing feedback, adjust the correlation thresholds/windows if needed, and select **Analyse events**. Optionally inspect or load a tuning profile under **Detection rules and optional tuning profile**.
-4. Open **View supporting events** on a finding. Inspect source records, matched fields, and scoring contributions; use **Back to finding** to continue the review.
+3. Choose one file or select multiple exports together, review parsing feedback, adjust the correlation thresholds/windows if needed, and select **Analyse events**. Optionally inspect or load a tuning profile under **Detection rules and optional tuning profile**.
+4. Review **Source files and duplicate handling** and **Per-rule coverage and data gaps**, then open **View supporting events** on a finding. Inspect source records, matched fields, and scoring contributions; use **Back to finding** to continue the review.
 5. Sort and filter the evidence, add case or finding notes, then choose an export scope and download JSON or CSV. Use **Entire dataset → Download JSON report** to keep all case notes, including notes from findings removed by a settings change.
 6. Choose **Save entire case** to continue later. Expand **Reopen a saved case** below the event chooser and select the downloaded JSON. Reopening restores the investigation and recalculates findings; invalid or cancelled files preserve the current case.
 
@@ -98,13 +100,13 @@ cd windows-security-event-log-triage-tool
 
 Open **index.html** in a modern browser, then load a file from **samples/** or choose your own authorised export. To run developer checks and tests, use Node.js 22 or later. No npm install is required.
 
-Opening `index.html` directly uses small-file mode (up to **2 MB**). For background processing of files up to **25 MB**, use GitHub Pages or serve the folder locally, for example with Python 3. Both modes enforce **100,000 accepted events**:
+Opening `index.html` directly uses small-file mode (up to **2 MB combined**). For background processing of up to **20 files / 25 MB combined**, use GitHub Pages or serve the folder locally, for example with Python 3. New event imports enforce **100,000 source records**, including skipped and duplicate records:
 
 ~~~bash
 python3 -m http.server 8000 --bind 127.0.0.1
 ~~~
 
-Then open `http://127.0.0.1:8000`. Keep all JavaScript files beside `index.html`, including `rules.generated.js`, `rule-profiles.js`, `inputs.js`, `report.js`, `case-file.js`, `task-runner.js`, and `worker.js`. Preserve `samples/` and `tools/` for demos and the converter download. Processing remains local. Large or complex datasets still consume memory; **Cancel operation** stops the active worker. Saved-case reopening supports 50 MB with workers and 2 MB in small-file mode.
+Then open `http://127.0.0.1:8000`. Keep all JavaScript files beside `index.html`, including `rules.generated.js`, `rule-profiles.js`, `inputs.js`, `collection.js`, `report.js`, `case-file.js`, `task-runner.js`, and `worker.js`. Preserve `samples/` and `tools/` for demos and the converter download. Processing remains local. Large or complex datasets still consume memory; **Cancel operation** stops the active worker. Saved-case reopening supports 50 MB with workers and 2 MB in small-file mode.
 
 ## Test the analysis logic
 
@@ -132,6 +134,8 @@ This project is an educational aid for deciding what to inspect next. It does **
 English Event Viewer message sections and common structured event fields are supported. Localised messages may need structured EventData fields; original records remain available. XML support is a bounded Windows Event XML subset, not a general XML or XSD validator. JSON must match the [documented event shape](docs/inputs.md). UTF-8 and BOM-marked UTF-16 are supported. ISO fractional seconds up to seven digits are accepted; calculations use millisecond precision and retain original timestamp strings. Timezone-free timestamps use browser-local wall time. PowerShell fragments are inspected separately rather than reassembled. Raw task XML is retained for review.
 
 Saved cases and full JSON reports can be reopened with validated evidence and recalculated findings. Filtered reports cannot restore a complete case. Files are user-provided snapshots, not cryptographic evidence records. Collection timezone is analyst context and does not reinterpret dates; reopening in a different browser timezone can change timezone-free timestamp interpretation and displays a notice. Save before replacing a dataset. Row inspectors shorten values above 20,000 characters for display; full values remain in exports.
+
+Duplicate checking is deliberately conservative: records without a complete Windows record identity, or with differently shaped source fields, remain included. Unconfirmed overlaps may still affect thresholds. All originals remain available; coverage is calculated on records included in analysis. An assessed rule is not proof of complete auditing or absence of activity.
 
 Mistyped passwords, stale service credentials, account management, group changes, services, PowerShell activity, and cleared logs can all be legitimate in the right context. Validate important findings with authorised sources before escalating.
 

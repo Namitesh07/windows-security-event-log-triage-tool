@@ -2,7 +2,7 @@
 (function exposeReports(root) {
   'use strict';
   const analysis = typeof module !== 'undefined' && module.exports ? require('./analysis.js') : root.EventTriageAnalysis;
-  const TOOL_VERSION = '1.5.0';
+  const TOOL_VERSION = '1.6.0';
   const profiles = typeof module !== 'undefined' && module.exports ? require('./rule-profiles.js') : root.EventTriageProfiles;
   const RULES_VERSION = profiles.catalog.version;
   const { severityOrder, eventSort, accountDisplay, labelById, rules, normalizeSettings, correlationCoverage } = analysis;
@@ -11,7 +11,7 @@
   const findingSorts = Object.freeze(['priority', 'newest', 'oldest', 'title']);
   const textCompare = (a, b) => String(a || '').localeCompare(String(b || ''), 'en', { numeric: true, sensitivity: 'base' });
   function searchText(event) {
-    return ((labelById[event.id] || '') + ' ' + event.rawFields.map(item => item.value).join(' ')).toLowerCase();
+    return ((labelById[event.id] || '') + ' ' + (event.sourceName || '') + ' ' + (event.sourceId || '') + ' ' + event.rawFields.map(item => item.value).join(' ')).toLowerCase();
   }
   function compareTime(a, b, direction = 1) {
     if (a.date && b.date) return direction * (a.date.getTime() - b.date.getTime()) || a.index - b.index;
@@ -23,7 +23,8 @@
     const filtered = events.filter(event => (!evidenceIds || evidenceIds.has(event.uid)) &&
       (!search || (event._searchText || searchText(event)).includes(search)) &&
       (!view.id || event.id === view.id) && (!view.priority || (priorities.get(event.uid) || 'Informational') === view.priority) &&
-      (!view.ip || event.ip === String(view.ip).trim()) && (!view.type || (labelById[event.id] || 'Other event') === view.type));
+      (!view.ip || event.ip === String(view.ip).trim()) && (!view.type || (labelById[event.id] || 'Other event') === view.type) &&
+      (!view.sourceId || event.sourceId === view.sourceId) && (view.duplicates !== 'unique' || !event.duplicateOf) && (view.duplicates !== 'duplicates' || Boolean(event.duplicateOf)));
     const compare = {
       csv: (a, b) => a.index - b.index,
       'time-asc': (a, b) => compareTime(a, b),
@@ -63,7 +64,7 @@
     const ruleProfile = profiles.normalizeProfile(input.ruleProfile || profiles.defaultProfile);
     const activeRules = profiles.effectiveRules(ruleProfile);
     return {
-      schemaVersion: '1.1', tool: { name: 'Windows Security Event Log Triage Tool', version: TOOL_VERSION, rulesVersion: RULES_VERSION },
+      schemaVersion: '1.2', tool: { name: 'Windows Security Event Log Triage Tool', version: TOOL_VERSION, rulesVersion: RULES_VERSION },
       ruleProfile,
       generatedAt: input.generatedAt || new Date().toISOString(), analyzedAt: input.analyzedAt,
       caseOrigin: input.caseOrigin || null,
@@ -73,6 +74,10 @@
       scope: { ...input.scope, exportedEvents: events.length, exportedFindings: findings.length,
         findingsPolicy: 'Complete findings only: every supporting event must belong to the export scope.' },
       coverage: input.coverage || correlationCoverage(events), coverageScope: input.coverage ? 'entire dataset' : 'exported events', diagnostics: input.diagnostics,
+      ruleCoverage: input.ruleCoverage || analysis.ruleCoverage(events,findings,ruleProfile,input.settings),
+      ruleCoverageScope: input.ruleCoverage ? 'entire dataset' : 'exported events',
+      duplicates: {policy:'Conservative overlaps across different source files are excluded from rules; all original records are retained.',
+        scope:'exported events',duplicateEvents:events.filter(event => event.duplicateOf).length,analyzedEvents:events.filter(event => !event.duplicateOf).length},
       ruleCatalog: Object.entries(activeRules).map(([id, rule]) => ({ id, title: rule.title, enabled:rule.enabled, contributions: rule.breakdown,
         points: rule.breakdown.reduce((sum, part) => sum + part.points, 0) })),
       findings: findings.map(({ events: evidence, ...finding }) => ({ ...finding,
@@ -83,6 +88,8 @@
       limitations: ['Educational review cues do not prove malicious activity.',
         'CSV spreadsheet protection changes formula-like cells; JSON preserves the original strings.',
         'Full-dataset JSON can be reopened with validated evidence and recalculated findings; filtered reports cannot restore a complete case.',
+        'Duplicate checks require matching host, channel, provider, record number, timestamp, Event ID, and source fields. Incomplete or differently shaped exports may retain overlaps.',
+        'Rule coverage describes this collection and the active profile, not proof of complete auditing or absence of activity.',
         'Reports and saved cases are user-provided data, not cryptographic evidence records.']
     };
   }
@@ -95,20 +102,24 @@
   const csv = rows => '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
   function findingsCsv(report) {
     const events = new Map(report.events.map(event => [event.uid,event]));
-    return csv([['Tool version','Rules version','Generated at','Analysed at','Dataset','Scope','Case title','Analyst','Collection timezone','Case notes','Effective settings','Finding ID','Rule ID','Title','Review priority','Priority points','Review status','Analyst note','Event UIDs','CSV rows','Matched values','Score contributions','Why','Benign context','Next steps','Source locations (JSON)','Rule profile (JSON)'],
+    return csv([['Tool version','Rules version','Generated at','Analysed at','Dataset','Scope','Case title','Analyst','Collection timezone','Case notes','Effective settings','Finding ID','Rule ID','Title','Review priority','Priority points','Review status','Analyst note','Event UIDs','CSV rows','Matched values','Score contributions','Why','Benign context','Next steps','Source locations (JSON)','Rule profile (JSON)','Rule coverage (JSON)'],
       ...report.findings.map(finding => [report.tool.version,report.tool.rulesVersion,report.generatedAt,report.analyzedAt,report.source.name,
         report.scope.mode,report.case.title,report.case.analyst,report.case.collectionTimezone,report.case.notes,JSON.stringify(report.settings),
         finding.id,finding.ruleId,finding.title,finding.severity,finding.score,finding.review.status,finding.review.note,
         finding.eventUids.join('; '),finding.eventUids.map(uid => {const event=events.get(uid);return !event?.inputFormat||event.inputFormat==='csv'?event?.lineNumber:'';}).join('; '),
         JSON.stringify(finding.matchedFields),JSON.stringify(finding.scoreBreakdown),finding.why,finding.benign,finding.next.join('\n'),
-        JSON.stringify(finding.eventUids.map(uid=>{const event=events.get(uid);return {uid,format:event?.inputFormat||'csv',record:event?.sourceRecord||event?.index,line:event?.inputFormat==='json'?null:event?.sourceLine??event?.lineNumber};})),JSON.stringify(report.ruleProfile)])]);
+        JSON.stringify(finding.eventUids.map(uid=>sourceLocation(events.get(uid)))),JSON.stringify(report.ruleProfile),JSON.stringify(report.ruleCoverage?.find(item=>item.ruleId===finding.ruleId))])]);
+  }
+  function sourceLocation(event = {}) {
+    return {uid:event.uid,sourceId:event.sourceId || null,sourceName:event.sourceName || null,format:event.inputFormat || 'csv',
+      record:event.sourceRecord || event.index,line:event.inputFormat === 'json' ? null : event.sourceLine ?? event.lineNumber,duplicateOf:event.duplicateOf || null};
   }
   function eventsCsv(report) {
-    return csv([['Tool version','Rules version','Dataset','Scope','Event UID','CSV row','Event ID','Original timestamp','Parsed timestamp','Timezone basis','Timestamp status','Review priority','Windows level','Target account','Target SID','Actor','Reporting host','Source IP','Event type','Original message','Original CSV fields (JSON)','Case title','Effective settings','Input format','Source record','Source line','Rule profile (JSON)'],
+    return csv([['Tool version','Rules version','Dataset','Scope','Event UID','CSV row','Event ID','Original timestamp','Parsed timestamp','Timezone basis','Timestamp status','Review priority','Windows level','Target account','Target SID','Actor','Reporting host','Source IP','Event type','Original message','Original CSV fields (JSON)','Case title','Effective settings','Input format','Source record','Source line','Rule profile (JSON)','Source file ID','Source filename','Duplicate of','Included in analysis'],
       ...report.events.map(event => [report.tool.version,report.tool.rulesVersion,report.source.name,report.scope.mode,event.uid,!event.inputFormat||event.inputFormat==='csv'?event.lineNumber:'',
         event.id,event.timeText,typeof event.date?.toISOString === 'function' ? event.date.toISOString() : event.date,event.timeBasis,event.timestampStatus,
         event.reviewPriority,event.level,accountDisplay(event),event.accountSid,event.actor,event.computer,event.ip,labelById[event.id] || 'Other event',
-        event.message,JSON.stringify(event.rawFields),report.case.title,JSON.stringify(report.settings),event.inputFormat||'csv',event.sourceRecord||event.index,event.sourceLine??'',JSON.stringify(report.ruleProfile)])]);
+        event.message,JSON.stringify(event.rawFields),report.case.title,JSON.stringify(report.settings),event.inputFormat||'csv',event.sourceRecord||event.index,event.sourceLine??'',JSON.stringify(report.ruleProfile),event.sourceId||'',event.sourceName||'',event.duplicateOf||'',!event.duplicateOf])]);
   }
   function filename(title, kind, extension) {
     const stem = String(title || 'triage-report').normalize('NFKC').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'triage-report';

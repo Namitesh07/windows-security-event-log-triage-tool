@@ -45,14 +45,16 @@
   const reports = window.EventTriageReports;
   const cases = window.EventTriageCases;
   const inputs = window.EventTriageInputs, profiles = window.EventTriageProfiles;
+  const collection = window.EventTriageCollection;
   const runner = new window.EventTriageTasks.TaskRunner();
   const ids = ['csv-file','file-name','analyze-button','parse-status','drop-zone','failure-threshold','auth-window','spray-threshold','account-window','reset-settings','report','report-title','dataset-tag','summary-banner','coverage-note','metrics','findings','finding-count','finding-sort','findings-prev','findings-next','findings-page','top-accounts','top-failures','common-ids','event-search','filter-id','filter-severity','filter-ip','filter-type','event-rows','visible-count','timeline','timeline-title','timeline-prev','timeline-next','timeline-page','event-panel','events-title','evidence-scope','evidence-title','evidence-back','show-all-events','clear-filters','event-sort','page-size','page-first','page-prev','page-next','page-last','page-label','event-reference','cancel-task','task-progress','settings','case-title','case-analyst','case-timezone','case-notes','case-status','export-scope','export-json','export-findings','export-events','export-status'];
   const els = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
   els['processing-bar'] = document.getElementById('processing-bar'); els['task-label'] = document.getElementById('task-label');
   for(const id of ['rule-profile-file','reset-rule-profile','download-rule-profile','rule-profile-status','rule-catalog'])els[id]=document.getElementById(id);
   for(const id of ['reopen-case-file','reopen-status','save-case'])els[id]=document.getElementById(id);
+  for(const id of ['filter-source','filter-duplicates','source-summary','source-list','rule-coverage-summary','rule-coverage-list'])els[id]=document.getElementById(id);
   const settingIds = { failureThreshold: 'failure-threshold', authWindowMinutes: 'auth-window', sprayAccountThreshold: 'spray-threshold', accountWindowMinutes: 'account-window' };
-  const filterIds = ['event-search','filter-id','filter-severity','filter-ip','filter-type'];
+  const filterIds = ['event-search','filter-id','filter-severity','filter-ip','filter-type','filter-source','filter-duplicates'];
   const caseIds = { title:'case-title', analyst:'case-analyst', collectionTimezone:'case-timezone', notes:'case-notes' };
   const FINDING_PAGE_SIZE = 20, TIMELINE_PAGE_SIZE = 100;
   const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown';
@@ -63,12 +65,14 @@
   let caseContext = reports.normalizeCase(), orderedFindings = [], noteworthy = [], viewCache = null, searchTimer;
   let currentProfile = profiles.defaultProfile, analysisProfile = profiles.defaultProfile;
   let caseOrigin = null, datasetBytes = 0;
+  let currentRuleCoverage = [], duplicateRecords = new Map();
 
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   const csvEscape = value => '"' + String(value).replaceAll('"', '""') + '"';
   const makeCsv = rows => [csvHeader, ...rows.map(row => row.map(csvEscape).join(','))].join('\r\n');
   const displayTime = event => (event.timeText || 'Time unavailable').slice(0,500);
-  const sourceLabel = event => event.inputFormat === 'json' ? 'JSON record ' + event.sourceRecord : event.inputFormat === 'xml' ? 'XML line ' + event.sourceLine : event.inputFormat === 'jsonl' ? 'JSON line ' + event.sourceLine : 'CSV row ' + event.lineNumber;
+  const sourceLabel = event => (event.inputFormat === 'json' ? 'JSON record ' + event.sourceRecord : event.inputFormat === 'xml' ? 'XML line ' + event.sourceLine : event.inputFormat === 'jsonl' ? 'JSON line ' + event.sourceLine : 'CSV row ' + event.lineNumber) +
+    (source.files?.length > 1 ? ' · '+event.sourceName+' ['+event.sourceId+']' : '');
   const preview = value => String(value ?? '').length > 20000 ? String(value).slice(0,20000) + '\n[Preview shortened; full value is preserved in JSON and events CSV.]' : String(value ?? '');
   const pairHtml = (label, value) => '<dt>' + escapeHtml(label) + '</dt><dd>' + escapeHtml(preview(value || 'Not available')) + '</dd>';
   const scrollTo = (element, block = 'start') => element.scrollIntoView({ behavior: 'auto', block });
@@ -121,45 +125,50 @@
     const token = ++taskToken; runner.cancel();
     setBusy(true); setStatus('Reading event export…');
     try {
-      const result = await runner.run('parse', payload, message => { if (token === taskToken) setStatus(message); });
+      const result = await runner.run(payload.files ? 'parse-files' : 'parse', payload, message => { if (token === taskToken) setStatus(message); });
       if (token !== taskToken) return;
       currentEvents = result.events; currentFindings = []; selectedFile = name; diagnostics = result.diagnostics;
-      source = { name, sizeBytes: payload.bytes || payload.file?.size || 0, lastModified: metadata.lastModified || null, loadedAt: new Date().toISOString(), kind: metadata.kind || result.format, format:result.format };
+      source = result.source || { name, sizeBytes: payload.bytes || payload.file?.size || 0, lastModified: metadata.lastModified || null, loadedAt: new Date().toISOString(), kind: metadata.kind || result.format, format:result.format };
+      selectedFile = source.name; currentRuleCoverage = [];
       datasetBytes = source.sizeBytes; caseOrigin = null; els['reopen-status'].textContent = '';
       analyzedAt = null; activeEvidenceId = null; page = findingPage = timelinePage = 0;
       eventByUid = new Map(currentEvents.map(event => [event.uid,event]));
       eventPriorities = new Map(); relatedFindings = new Map();
       resetFilters(); resetCase();
       els['event-sort'].value = 'csv'; els['finding-sort'].value = 'priority'; els['export-scope'].value = 'all';
-      els.report.hidden = true; els['file-name'].textContent = name; els['export-status'].textContent = '';
+      els.report.hidden = true; els['file-name'].textContent = selectedFile; els['export-status'].textContent = '';
       const d = diagnostics, rows = [...d.blankEventIdRows, ...d.invalidEventIdRows].sort((a,b) => a-b);
       const timestampRows = [...d.ambiguousTimestampRows, ...d.invalidTimestampRows, ...d.missingTimestampRows].sort((a,b) => a-b);
       const describe = values => values.slice(0,8).join(', ') + (values.length > 8 ? ' and ' + (values.length - 8) + ' more' : '');
       const location=result.format==='csv'?'CSV row(s)':result.format==='json'?'JSON record(s)':result.format.toUpperCase()+' line(s)';
-      setStatus(d.rowsParsed + ' events parsed from ' + result.format.toUpperCase() + '.' + (rows.length ? ' Skipped unreadable Event IDs in '+location+' ' + describe(rows) + '.' : '') +
+      const warnings = source.files?.length > 1 ? (d.files || []).filter(file => file.rowsSkipped || file.invalidTimestamps || file.ambiguousTimestamps || file.missingTimestamps)
+        .map(file => source.files.find(item => item.id === file.sourceId).name+' ['+file.sourceId+']: '+file.rowsSkipped+' unreadable Event ID(s), '+(file.invalidTimestamps+file.ambiguousTimestamps+file.missingTimestamps)+' timestamp(s) needing review.').join(' ') : '';
+      setStatus(d.rowsParsed + ' events parsed from ' + (source.files?.length > 1 ? source.files.length+' files' : result.format.toUpperCase()) + '.' +
+        (source.files?.length > 1 ? ' '+warnings : (rows.length ? ' Skipped unreadable Event IDs in '+location+' ' + describe(rows) + '.' : '') +
         (timestampRows.length ? ' Timestamp review needed in '+location+' ' + describe(timestampRows) + '; timed correlations exclude those records.' : '') +
+        '') + (d.duplicateEvents ? ' '+d.duplicateEvents+' confirmed overlapping record(s) retained and excluded from rules.' : '') +
         ' Select Analyse events to build the report.');
     } catch (error) {
       if (token === taskToken && error.name !== 'AbortError') setStatus(error.message || 'Could not read this event export.', true);
     } finally { if (token === taskToken) { setBusy(false); els['csv-file'].value = ''; } }
   }
-  async function loadFile(file) {
-    if (!file) return;
-    let format;try{format=inputs.formatForName(file.name);}catch(error){setStatus(error.message,true);els['csv-file'].value='';return;}
-    if (file.size > 25 * 1024 * 1024) { setStatus('File exceeds 25 MB. Export a smaller time range.', true); return; }
+  async function loadFiles(selection) {
+    const files = Array.from(selection || []).map(file => ({file,name:file.name}));
+    if (!files.length) return;
+    let bytes;try { bytes=collection.validateFiles(files); } catch(error) { setStatus(error.message,true);els['csv-file'].value='';return; }
     if (!mayReplaceDataset()) { els['csv-file'].value = ''; return; }
-    await processInput({ file, bytes: file.size, format }, file.name, { lastModified: file.lastModified ? new Date(file.lastModified).toISOString() : null });
+    await processInput({files,bytes},files.length === 1 ? files[0].name : files.length+' event exports');
   }
   async function runAnalysis(focusReport = false) {
     if (!currentEvents.length) return;
     const token = ++taskToken, effectiveSettings = settings();
     setBusy(true); setStatus('Correlating events…');
     try {
-      const result = await runner.run('analyze', { events: currentEvents, settings: effectiveSettings, ruleProfile:currentProfile, bytes: datasetBytes },
+      const result = await runner.run('analyze', { events: currentEvents, settings: effectiveSettings, ruleProfile:currentProfile, bytes: datasetBytes,includeCoverage:true },
         message => { if (token === taskToken) setStatus(message); });
       if (token !== taskToken) return;
       analysisSettings = effectiveSettings; analysisProfile=currentProfile; analyzedAt = new Date().toISOString();
-      indexFindings(result); render(); updateCaseStatus();
+      currentRuleCoverage = result.ruleCoverage; indexFindings(result.findings); render(); updateCaseStatus();
       setStatus('Triage report ready. ' + currentFindings.length + ' findings. Check the correlation coverage note.');
       setBusy(false);
       if (focusReport) { scrollTo(els['report-title']); els['report-title'].focus({ preventScroll: true }); }
@@ -176,6 +185,11 @@
     currentFindings = result.map(({ eventUids, ...finding }) => ({ ...finding, events:eventUids.map(uid => eventByUid.get(uid)) }));
     if (!currentFindings.some(finding => finding.id === activeEvidenceId)) activeEvidenceId = null;
     eventPriorities = new Map(); relatedFindings = new Map();
+    duplicateRecords = new Map();
+    for (const event of currentEvents) if (event.duplicateOf) {
+      if (!duplicateRecords.has(event.duplicateOf)) duplicateRecords.set(event.duplicateOf,[]);
+      duplicateRecords.get(event.duplicateOf).push(event);
+    }
     for (const finding of currentFindings) for (const event of finding.events) {
       if (!relatedFindings.has(event.uid)) relatedFindings.set(event.uid, []);
       relatedFindings.get(event.uid).push(finding);
@@ -206,7 +220,7 @@
       activeEvidenceId = null; page = findingPage = timelinePage = 0; resetFilters();
       els['event-sort'].value = 'csv'; els['finding-sort'].value = 'priority'; els['export-scope'].value = 'all';
       els['file-name'].textContent = selectedFile; els['export-status'].textContent = '';
-      indexFindings(result.findings); renderRuleProfile(); render(); updateCaseStatus();
+      currentRuleCoverage = result.ruleCoverage; indexFindings(result.findings); renderRuleProfile(); render(); updateCaseStatus();
       els['reopen-case-file'].setAttribute('aria-invalid','false');
       els['reopen-status'].textContent = 'Reopened '+file.name+'. '+result.notices.join(' ');
       setStatus('Saved case reopened: '+currentEvents.length+' events. Evidence, notes, settings, and rule profile restored.');
@@ -231,12 +245,37 @@
       ' account/group records lack a usable time, target identity, or host. These records remain in the event table. Timed matches require timestamps with a time of day and the same timezone basis.' +
       (coverage.incompleteScripts ? ' ' + coverage.incompleteScripts + ' PowerShell records are marked as fragments; complete scripts may require other records.' : '');
     const counts = new Map();
-    for (const event of currentEvents) counts.set(event.id, (counts.get(event.id) || 0) + 1);
-    const metrics = [['Total events', currentEvents.length], ['Successful logons', counts.get('4624') || 0], ['Failed logons', counts.get('4625') || 0],
+    for (const event of currentEvents.filter(event => !event.duplicateOf)) counts.set(event.id, (counts.get(event.id) || 0) + 1);
+    const duplicates = currentEvents.filter(event => event.duplicateOf).length;
+    const metrics = [['Total records', currentEvents.length], ['Records assessed', currentEvents.length-duplicates], ['Confirmed duplicates',duplicates], ['Successful logons', counts.get('4624') || 0], ['Failed logons', counts.get('4625') || 0],
       ['Accounts created', counts.get('4720') || 0], ['Group additions', (counts.get('4728') || 0) + (counts.get('4732') || 0)],
       ['Audit-log clearing', counts.get('1102') || 0], ['Process creation', counts.get('4688') || 0], ['Findings to review', currentFindings.length]];
     els.metrics.innerHTML = metrics.map(([label,value]) => '<div class="metric"><span>' + escapeHtml(label) + '</span><strong>' + value + '</strong></div>').join('');
-    renderFindings(); renderSnapshots(); renderFilters(); renderTimeline(); renderTable();
+    renderSources(); renderCoverage(); renderFindings(); renderSnapshots(); renderFilters(); renderTimeline(); renderTable();
+  }
+  function renderSources() {
+    const files = source.files || [{id:'source-1',name:source.name,format:source.format}];
+    const duplicates = currentEvents.filter(event => event.duplicateOf).length;
+    els['source-summary'].textContent = files.length+' source file(s) · '+currentEvents.length+' original records · '+duplicates+' confirmed duplicates excluded from rules.'+
+      (files.length > 1 && diagnostics.uncomparableEvents ? ' '+diagnostics.uncomparableEvents+' records lack the identity needed for duplicate comparison and were kept.' : '');
+    els['source-list'].innerHTML = files.map(file => {
+      const events = currentEvents.filter(event => event.sourceId === file.id || !event.sourceId && files.length === 1);
+      const diagnostic = diagnostics.files?.find(item => item.sourceId === file.id);
+      return '<li><strong>'+escapeHtml(file.name)+'</strong> <span class="muted">['+escapeHtml(file.id)+'] · '+escapeHtml(file.format?.toUpperCase())+' · '+events.length+' records · '+events.filter(event => event.duplicateOf).length+' duplicates'+
+        (diagnostic ? ' · '+diagnostic.rowsSkipped+' skipped unreadable IDs' : '')+'</span></li>';
+    }).join('');
+  }
+  function renderCoverage() {
+    const labels = {disabled:'Disabled','no-events':'No relevant events','insufficient-data':'Insufficient data',partial:'Partly assessed',assessed:'Assessed'};
+    const counts = new Map(); for (const item of currentRuleCoverage) counts.set(item.state,(counts.get(item.state)||0)+1);
+    els['rule-coverage-summary'].textContent = [...counts].map(([state,count]) => count+' '+labels[state].toLowerCase()).join(' · ')+'. Coverage uses the entire collection, excluding confirmed duplicates.';
+    els['rule-coverage-list'].innerHTML = currentRuleCoverage.map(item => '<details class="rule-coverage-item"><summary><span>'+escapeHtml(item.title)+' <small>'+escapeHtml(item.ruleId)+'</small></span><span class="coverage-state">'+labels[item.state]+'</span></summary>'+
+      '<p>'+escapeHtml(item.explanation)+'</p><p class="muted small">'+item.relevantEvents+' relevant · '+item.eligibleEvents+' with required fields · '+item.excludedEvents+' with field gaps · '+item.findingCount+' emitted finding(s).</p>'+
+      '<p><strong>Required:</strong> '+item.requirements.map(escapeHtml).join('; ')+'.</p>'+
+      (item.missingFields.length ? '<ul>'+item.missingFields.map(gap => '<li>'+escapeHtml(gap.field)+': '+gap.events+' record(s); examples '+gap.exampleEventUids.map(escapeHtml).join(', ')+'.</li>').join('')+'</ul>' : '')+
+      (item.missingEventTypes.length ? '<p>Missing companion events: '+item.missingEventTypes.map(escapeHtml).join('; ')+'.</p>' : '')+
+      item.warnings.map(warning => '<p class="muted small">'+escapeHtml(warning)+'</p>').join('')+
+      '<details><summary>Collection and logging context</summary><ul>'+item.collectionHints.map(hint => '<li>'+escapeHtml(hint.eventId+' · '+hint.channel+' · '+hint.audit)+'</li>').join('')+'</ul></details></details>').join('');
   }
   function pager(prefix, pageIndex, size, total) {
     const last = Math.max(0, Math.ceil(total / size) - 1);
@@ -289,7 +328,7 @@
   }
   function renderSnapshots() {
     const accounts = new Map(), failures = new Map(), counts = new Map();
-    for (const event of currentEvents) {
+    for (const event of currentEvents.filter(event => !event.duplicateOf)) {
       const name = event.account || event.accountSid ? accountDisplay(event) : '';
       if (name) accounts.set(name,(accounts.get(name) || 0) + 1);
       if (name && event.id === '4625') failures.set(name,(failures.get(name) || 0) + 1);
@@ -310,9 +349,14 @@
         '<option value="' + escapeHtml(value) + '">' + escapeHtml(id === 'filter-id' ? value + ' · ' + (labelById[value] || 'Other event') : value) + '</option>').join('');
       els[id].value = values.includes(previous) ? previous : '';
     }
+    const selected = els['filter-source'].value;
+    els['filter-source'].innerHTML = '<option value="">All source files</option>'+(source.files || []).map(file => '<option value="'+escapeHtml(file.id)+'">'+escapeHtml(file.name+' ['+file.id+']')+'</option>').join('');
+    els['filter-source'].value = (source.files || []).some(file => file.id === selected) ? selected : '';
   }
   function eventDetails(event) {
     const pairs = [
+      ['Source filename',event.sourceName || source.name],['Source file ID',event.sourceId],['Windows record ID',event.eventRecordId],['Event channel',event.channel],
+      ['Duplicate handling',event.duplicateOf ? 'Confirmed duplicate of '+event.duplicateOf+'; retained here and excluded from rules.' : 'Included in rule analysis'],
       ['Target account',event.account || event.accountSid ? accountDisplay(event) : ''],['Target SID',event.accountSid],['Actor',event.actor],
       ['Reporting host',event.computer],['Source IP',event.ip],['Workstation / caller',event.workstation],
       ['Timestamp interpretation',event.timestampStatus + (event.hasTime ? '' : '; no time of day')],['Timezone basis',event.timeBasis],
@@ -326,14 +370,16 @@
       ['Firewall profile',event.firewallProfile],['Firewall setting',event.firewallSetting],['Firewall value',event.firewallValue]
     ].filter(([,value]) => value);
     const links = (relatedFindings.get(event.uid) || []).map(finding => '<button type="button" class="button button-quiet" data-finding-focus="' + finding.id + '">Back to ' + escapeHtml(finding.title) + '</button>').join('');
+    const overlaps = duplicateRecords.get(event.duplicateOf || event.uid) || [];
     return '<dl class="match-fields">' + pairs.map(([label,value]) => pairHtml(label,value)).join('') +
+      (overlaps.length ? '<p>Overlapping records retained in other sources: '+overlaps.map(record => escapeHtml(record.uid+' · '+sourceLabel(record))).join('; ')+'.</p>' : '')+
       '</dl><h4>Original event message</h4><pre tabindex="0" aria-label="Original event message">' + escapeHtml(preview(event.message || 'No Message column value')) +
       '</pre><details><summary>' + (event.inputFormat && event.inputFormat !== 'csv' ? 'All source and adapter fields' : 'All original CSV columns') + '</summary><dl class="match-fields">' +
       event.rawFields.map(item => pairHtml(item.header,item.value)).join('') + '</dl></details>' + links;
   }
   function viewState() {
     return { search:els['event-search'].value, id:els['filter-id'].value, priority:els['filter-severity'].value,
-      ip:els['filter-ip'].value, type:els['filter-type'].value, sort:els['event-sort'].value || 'csv' };
+      ip:els['filter-ip'].value, type:els['filter-type'].value,sourceId:els['filter-source'].value,duplicates:els['filter-duplicates'].value, sort:els['event-sort'].value || 'csv' };
   }
   function matchingEvents() {
     const view = viewState(), key = JSON.stringify([activeEvidenceId,view]);
@@ -360,7 +406,7 @@
         event.process,event.serviceName,event.taskName,event.firewallRule].filter(Boolean).join(' · ').slice(0,500);
       return '<tr data-event-uid="' + event.uid + '"><td>' + escapeHtml(displayTime(event)) + '<br>' + escapeHtml(sourceLabel(event)) +
         '</td><td>' + event.id + '</td><td><span class="severity ' + priority.toLowerCase() + '">' + priority +
-        '</span></td><td>' + escapeHtml((event.account || event.accountSid ? accountDisplay(event) : '—').slice(0,500)) + '</td><td>' +
+        '</span>'+(event.duplicateOf ? '<br><span class="duplicate-label">Duplicate of '+escapeHtml(event.duplicateOf)+' · excluded from rules</span>' : '')+'</td><td>' + escapeHtml((event.account || event.accountSid ? accountDisplay(event) : '—').slice(0,500)) + '</td><td>' +
         escapeHtml((event.ip || event.computer || '—').slice(0,500)) + '</td><td class="event-message">' + escapeHtml(summary) +
         '<details class="event-details" data-inspect="' + event.uid + '"><summary>Inspect ' + escapeHtml(sourceLabel(event)) + '</summary><div class="event-detail-body"></div></details></td></tr>';
     }).join('') : '<tr><td colspan="6" class="table-empty">No events match these filters. Clear filters to return to the selected evidence.</td></tr>';
@@ -394,7 +440,7 @@
     const findings = orderedFindings.filter(finding => finding.events.every(event => scopeUids.has(event.uid)));
     const input = { events, findings, priorities:[...eventPriorities], annotations:{...annotations}, source:{...source},
       case:{...caseContext}, settings:analysisSettings, ruleProfile:analysisProfile, analyzedAt, browserTimezone, diagnostics,caseOrigin,
-      coverage:correlationCoverage(currentEvents), scope:{mode,totalEvents:currentEvents.length,totalFindings:currentFindings.length,
+      coverage:correlationCoverage(currentEvents),ruleCoverage:currentRuleCoverage, scope:{mode,totalEvents:currentEvents.length,totalFindings:currentFindings.length,
         evidenceFindingId:mode === 'view' ? activeEvidenceId : null, filters:mode === 'view' ? viewState() : null,
         eventSort:viewState().sort, findingSort:els['finding-sort'].value} };
     setBusy(true); els['export-status'].textContent = 'Preparing download…';
@@ -445,7 +491,7 @@
   els['save-case'].addEventListener('click',() => exportReport('case'));
   els['reopen-case-file'].addEventListener('change',event => reopenSavedCase(event.target.files?.[0]));
   els['cancel-task'].addEventListener('click',cancelTask);
-  els['csv-file'].addEventListener('change',event => loadFile(event.target.files?.[0]));
+  els['csv-file'].addEventListener('change',event => loadFiles(event.target.files));
   document.querySelectorAll('[data-sample]').forEach(button => button.addEventListener('click',async () => {
     if (!mayReplaceDataset()) return;
     const key = button.dataset.sample, text = makeCsv(sampleRows[key]);
@@ -496,7 +542,7 @@
   const zone = els['drop-zone'];
   for (const type of ['dragenter','dragover']) zone.addEventListener(type,event => { event.preventDefault(); zone.classList.add('dragover'); });
   for (const type of ['dragleave','drop']) zone.addEventListener(type,event => { event.preventDefault(); zone.classList.remove('dragover'); });
-  zone.addEventListener('drop',event => loadFile(event.dataTransfer.files?.[0]));
+  zone.addEventListener('drop',event => loadFiles(event.dataTransfer.files));
   els['event-reference'].innerHTML = Object.entries(eventCatalog).map(([id,info]) =>
     '<div><dt>' + id + '</dt><dd>' + escapeHtml(info.label) + '<details><summary>Logging and required context</summary><p>' +
     escapeHtml(info.channel) + ' · ' + escapeHtml(info.audit) + '</p><p>' + escapeHtml(info.fields) + '</p></details></dd></div>').join('');

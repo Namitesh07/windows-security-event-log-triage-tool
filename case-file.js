@@ -4,9 +4,10 @@
   const common = typeof module !== 'undefined' && module.exports;
   const analysis = common ? require('./analysis.js') : root.EventTriageAnalysis;
   const inputs = common ? require('./inputs.js') : root.EventTriageInputs;
+  const collection = common ? require('./collection.js') : root.EventTriageCollection;
   const profiles = common ? require('./rule-profiles.js') : root.EventTriageProfiles;
   const reports = common ? require('./report.js') : root.EventTriageReports;
-  const KIND = 'fieldnotes-case', SCHEMA_VERSION = '1.0', MAX_BYTES = 50 * 1024 * 1024;
+  const KIND = 'fieldnotes-case', SCHEMA_VERSION = '1.1', MAX_BYTES = 50 * 1024 * 1024;
   const MAX_FIELDS = 2048, MAX_ANNOTATIONS = 100000;
   const formats = ['csv', 'xml', 'json', 'jsonl'];
   const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -43,15 +44,38 @@
     if (value.loadedAt) result.loadedAt = iso(value.loadedAt,'source load time');
     return result;
   }
-  function normalizeEvidence(saved) {
+  function normalizeEvidence(saved, sourceValue, schema) {
     if (!Array.isArray(saved) || !saved.length || saved.length > inputs.MAX_RECORDS) fail('Expected 1–100,000 event records.');
     const records = [...saved].sort((a,b) => a?.index - b?.index);
-    let headers, format;
-    const rows = records.map((event, index) => {
+    let files;
+    if (sourceValue?.files !== undefined) {
+      if (schema !== '1.2' || !Array.isArray(sourceValue.files) || !sourceValue.files.length || sourceValue.files.length > collection.MAX_FILES) fail('Invalid source-file manifest.');
+      files = sourceValue.files.map((file,index) => {
+        if (!plain(file) || file.id !== 'source-'+(index+1) || !formats.includes(file.format)) fail('Invalid or duplicated source-file identifier/format.');
+        return {id:file.id,...source(file,file.format)};
+      });
+      if (files.reduce((sum,file) => sum+file.sizeBytes,0) !== sourceValue.sizeBytes) fail('Source-file sizes do not match the collection.');
+    } else {
+      const format = records[0]?.inputFormat || 'csv';
+      if (!formats.includes(format)) fail('Unsupported input format.');
+      files = [{id:'source-1',...source(sourceValue,format)}];
+    }
+    const fileMap = new Map(files.map(file => [file.id,file])), groups = new Map();
+    records.forEach((event,index) => {
       if (!plain(event) || event.index !== index + 1 || event.uid !== 'event-' + (index + 1)) fail('Event identifiers/order are incomplete, duplicated, or invalid.');
+      const sourceId = sourceValue?.files ? event.sourceId : 'source-1', file = fileMap.get(sourceId);
+      if (!file) fail('An event refers to an unknown source file.');
       const currentFormat = event.inputFormat || 'csv';
-      if (!formats.includes(currentFormat) || format && format !== currentFormat) fail('The case must contain one supported input format.');
-      format = currentFormat;
+      if (currentFormat !== file.format) fail('An event format does not match its source file.');
+      if (!groups.has(sourceId)) groups.set(sourceId,[]);
+      groups.get(sourceId).push(event);
+    });
+    if (groups.size !== files.length) fail('A source file has no saved event records.');
+    const events = [], perFile = [];
+    for (const [sourceId, savedEvents] of groups) {
+      let headers;
+      const file = fileMap.get(sourceId), format = file.format, usedRecords = new Set();
+      const rows = savedEvents.map(event => {
       if (!Array.isArray(event.rawFields) || !event.rawFields.length || event.rawFields.length > MAX_FIELDS) fail('An event has an invalid source-field list.');
       const names = event.rawFields.map(field => {
         if (!plain(field)) fail('Invalid source field.');
@@ -62,18 +86,28 @@
       else if (names.length !== headers.length || names.some((name, position) => name !== headers[position])) fail('Source-field layouts differ between records.');
       const row = event.rawFields.map(field => field.value);
       const record = integer(event.sourceRecord ?? event.index,1,1000000000,'source record');
-      const line = currentFormat === 'json' ? null : integer(event.sourceLine ?? event.lineNumber,1,1000000000,'source line');
+      if (usedRecords.has(record)) fail('Duplicated source record within a file.');
+      usedRecords.add(record);
+      const line = format === 'json' ? null : integer(event.sourceLine ?? event.lineNumber,1,1000000000,'source line');
       Object.defineProperties(row, { lineNumber:{value:line || record}, sourceRecord:{value:record}, sourceLine:{value:line} });
       return row;
     });
-    const normalized = analysis.normalizeEvents([headers, ...rows]);
-    if (normalized.events.length !== records.length) fail('Some saved records have invalid Event IDs.');
-    for (const event of normalized.events) {
-      event.inputFormat = format;
-      if (format === 'json') event.sourceLine = null;
-      event._searchText = reports.searchText(event);
+      const normalized = analysis.normalizeEvents([headers, ...rows]);
+      if (normalized.events.length !== savedEvents.length) fail('Some saved records have invalid Event IDs.');
+      perFile.push({sourceId,...normalized.diagnostics});
+      normalized.events.forEach((event,index) => {
+        event.inputFormat = format; event.index = savedEvents[index].index; event.uid = savedEvents[index].uid;
+        event.sourceId = sourceId; event.sourceName = file.name;
+        if (format === 'json') event.sourceLine = null;
+        event._searchText = reports.searchText(event); events.push(event);
+      });
     }
-    return { ...normalized, format };
+    events.sort((a,b) => a.index-b.index);
+    const parsed = {files:perFile};
+    for (const key of ['rowsRead','rowsParsed','rowsSkipped','invalidTimestamps','ambiguousTimestamps','missingTimestamps']) parsed[key] = perFile.reduce((sum,file) => sum+file[key],0);
+    for (const key of ['blankEventIdRows','invalidEventIdRows','invalidTimestampRows','ambiguousTimestampRows','missingTimestampRows']) parsed[key] = perFile.flatMap(file => file[key]);
+    const format = files.length === 1 ? files[0].format : 'mixed';
+    return {events,diagnostics:parsed,files,format,...collection.markDuplicates(events)};
   }
   function annotations(value, eventUids) {
     if (!Array.isArray(value) || value.length > MAX_ANNOTATIONS) fail('Invalid finding annotations.');
@@ -112,12 +146,12 @@
     if (!plain(document)) fail('Expected a saved-case JSON object.');
     let report = document, savedAt;
     if (document.kind !== undefined) {
-      if (document.kind !== KIND || document.schemaVersion !== SCHEMA_VERSION || !plain(document.report)) fail('Unsupported saved-case format or version.');
+      if (document.kind !== KIND || !['1.0',SCHEMA_VERSION].includes(document.schemaVersion) || !plain(document.report)) fail('Unsupported saved-case format or version.');
       report = document.report; savedAt = iso(document.savedAt,'case save time');
     }
-    if (report.schemaVersion !== '1.1' || report.tool?.name !== 'Windows Security Event Log Triage Tool') fail('Use a full JSON report from v1.4.0 or later, or a supported saved case.');
+    if (!['1.1','1.2'].includes(report.schemaVersion) || report.tool?.name !== 'Windows Security Event Log Triage Tool') fail('Use a full JSON report from v1.4.0 or later, or a supported saved case.');
     if (report.scope?.mode !== 'all' || report.scope.totalEvents !== report.events?.length || report.scope.exportedEvents !== report.events?.length) fail('A filtered/scoped report cannot restore a complete case. Export the entire dataset first.');
-    const normalized = normalizeEvidence(report.events), effectiveSettings = settings(report.settings);
+    const normalized = normalizeEvidence(report.events,report.source,report.schemaVersion), effectiveSettings = settings(report.settings);
     const ruleProfile = profiles.normalizeProfile(report.ruleProfile);
     const restoredAnnotations = annotations(report.annotations || [],new Set(normalized.events.map(event => event.uid)));
     const timezone = text(report.timestampContext?.browserTimezone || 'Unknown',120,'Saved browser timezone');
@@ -127,9 +161,23 @@
     const notices = ['Findings were recalculated from the saved source fields with this version of the analyser.'];
     if (origin.toolVersion !== reports.TOOL_VERSION || origin.rulesVersion !== reports.RULES_VERSION) notices.push('Saved with tool '+origin.toolVersion+' / rules '+origin.rulesVersion+'; current tool '+reports.TOOL_VERSION+' / rules '+reports.RULES_VERSION+'.');
     if (context.browserTimezone && timezone !== context.browserTimezone && normalized.events.some(event => event.timeBasis === 'local')) notices.push('The saved browser timezone was '+timezone+'; this browser uses '+context.browserTimezone+'. Timezone-free timestamps are reinterpreted in this browser.');
-    const findings = analysis.analyze(normalized.events,effectiveSettings,ruleProfile).map(({ events,...finding }) => ({ ...finding,eventUids:events.map(event => event.uid) }));
-    return { events:normalized.events,findings,source:source(report.source,normalized.format),case:caseContext(report.case),settings:effectiveSettings,ruleProfile,
-      annotations:restoredAnnotations,diagnostics:diagnostics(report.diagnostics,normalized.diagnostics),origin,notices,format:normalized.format };
+    const assessed = analysis.analyze(normalized.events,effectiveSettings,ruleProfile);
+    const findings = assessed.map(({ events,...finding }) => ({ ...finding,eventUids:events.map(event => event.uid) }));
+    const restoredDiagnostics = diagnostics(report.diagnostics,normalized.diagnostics);
+    if (report.diagnostics?.files !== undefined) {
+      if (!Array.isArray(report.diagnostics.files) || report.diagnostics.files.length !== normalized.files.length) fail('Invalid source diagnostics.');
+      const seen = new Set();
+      restoredDiagnostics.files = report.diagnostics.files.map(value => {
+        const parsed = normalized.diagnostics.files.find(file => file.sourceId === value?.sourceId);
+        if (!parsed || seen.has(value.sourceId)) fail('Invalid or duplicated source diagnostics.');
+        seen.add(value.sourceId); return {sourceId:value.sourceId,...diagnostics(value,parsed)};
+      });
+      for (const key of ['rowsRead','rowsParsed','rowsSkipped']) if (restoredDiagnostics.files.reduce((sum,file) => sum+file[key],0) !== restoredDiagnostics[key]) fail('Source diagnostics do not match the collection.');
+    }
+    Object.assign(restoredDiagnostics,{duplicateEvents:normalized.duplicateEvents,uniqueEvents:normalized.uniqueEvents,uncomparableEvents:normalized.uncomparableEvents});
+    notices.push('Duplicate links and per-rule coverage were recalculated; every original record is retained.');
+    return { events:normalized.events,findings,source:{...source(report.source,normalized.format),files:normalized.files},case:caseContext(report.case),settings:effectiveSettings,ruleProfile,
+      ruleCoverage:analysis.ruleCoverage(normalized.events,assessed,ruleProfile,effectiveSettings),annotations:restoredAnnotations,diagnostics:restoredDiagnostics,origin,notices,format:normalized.format };
   }
   function saveCase(input) {
     if (input.scope?.mode !== 'all' || input.scope.totalEvents !== input.events?.length) throw new Error('Save case requires the entire dataset.');

@@ -1,12 +1,15 @@
 /* Local background work; the selected CSV never leaves the browser. */
 'use strict';
-const ASSET_VERSION = '1.5.0';
-importScripts(...['rules.generated.js', 'rule-profiles.js', 'analysis.js', 'inputs.js', 'report.js', 'case-file.js'].map(file => file+'?v='+ASSET_VERSION));
+const ASSET_VERSION = '1.6.0';
+importScripts(...['rules.generated.js', 'rule-profiles.js', 'analysis.js', 'inputs.js', 'collection.js', 'report.js', 'case-file.js'].map(file => file+'?v='+ASSET_VERSION));
 self.onmessage = async ({ data }) => {
   const progress = message => self.postMessage({ type: 'progress', message });
   try {
     let result;
-    if (data.operation === 'parse') {
+    if (data.operation === 'parse-files') {
+      result = await self.EventTriageCollection.parseFiles(data.payload.files,progress);
+      for (const event of result.events) event._searchText = self.EventTriageReports.searchText(event);
+    } else if (data.operation === 'parse') {
       progress('Reading event file…');
       const text = data.payload.file ? await self.EventTriageInputs.readFileText(data.payload.file) : data.payload.text;
       progress('Extracting event fields…');
@@ -22,8 +25,9 @@ self.onmessage = async ({ data }) => {
       result = self.EventTriageCases.saveCase(data.payload.input);
     } else if (data.operation === 'analyze') {
       progress('Correlating events…');
-      result = self.EventTriageAnalysis.analyze(data.payload.events, data.payload.settings, data.payload.ruleProfile)
-        .map(({ events, ...finding }) => ({ ...finding, eventUids: events.map(event => event.uid) }));
+      const findings = self.EventTriageAnalysis.analyze(data.payload.events, data.payload.settings, data.payload.ruleProfile);
+      result = findings.map(({ events, ...finding }) => ({ ...finding, eventUids: events.map(event => event.uid) }));
+      if (data.payload.includeCoverage) result = {findings:result,ruleCoverage:self.EventTriageAnalysis.ruleCoverage(data.payload.events,findings,data.payload.ruleProfile,data.payload.settings)};
     } else if (data.operation === 'export') {
       progress('Preparing download…');
       const report = self.EventTriageReports.createReport(data.payload.input);

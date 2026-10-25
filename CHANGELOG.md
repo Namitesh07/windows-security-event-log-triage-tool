@@ -1,6 +1,23 @@
 # Changelog
 
-## Unreleased — v1.5.0 / upgrades 19–20
+## Unreleased — v1.6.0 / upgrades 21–22
+
+### Added
+
+- Multiple-file investigations: select or drop up to 20 CSV, Windows Event XML, JSON, and JSON Lines exports together, with per-file provenance, diagnostics, and source filters.
+- Conservative duplicate detection across files using complete Windows record identity and source-field equality. Every original remains in evidence and full exports; confirmed overlaps are excluded from rules and activity snapshots.
+- Per-rule coverage for all 23 rules, including rules with no findings: assessed/partial/insufficient-data/no-event/disabled states, field counts, missing companion events, example records, fragment/context warnings, and logging requirements.
+- Source and duplicate filters, visible duplicate references, report provenance, and portable multi-file cases. Duplicate links, source display names, findings, and coverage are rebuilt from validated evidence when reopening.
+- Tests for mixed-file uploads/drop, overlap thresholds, provenance, case compatibility, coverage, cancellation/failure preservation, and combined fallback limits.
+
+### Compatibility
+
+- Event imports accept 25 MB combined / 100,000 source records (including skipped IDs and duplicates), or 2 MB combined in fallback mode. Saved cases retain the 50 MB worker / 2 MB fallback limits.
+- Reports use schema 1.2 and saved-case envelope 1.1. Older single-file v1.4/v1.5 reports and v1.5 saved cases remain readable; older analyser versions cannot open the new schema.
+- Default detection conditions and scores are unchanged. Duplicate exclusion affects results only for confirmed overlaps across different source files. Unknown/incomplete overlaps remain included.
+- Processing remains entirely local, with no uploads, tracking, backend, or automatic storage. Source ZIPs retain the flat root layout.
+
+## v1.5.0 / upgrades 19–20
 
 ### Added
 
