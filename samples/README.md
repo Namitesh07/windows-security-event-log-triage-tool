@@ -37,3 +37,7 @@ No findings in a fixture means only that these records do not trigger a current 
 5. Review the benign process case alongside suspicious-admin-activity.csv. Compare actual command/process fields with free-text messages and list legitimate administrative explanations.
 
 Read the [input guide](../docs/inputs.md), [detection guide](../docs/detections.md), [rule-profile guide](../docs/rules.md), and [report guide](../docs/reports.md) for exact boundaries. Do not replace these fictional fixtures with sensitive operational logs in a public repository.
+
+## Multiple-file overlap exercise
+
+Select both [overlap-first.csv](collections/overlap-first.csv) and [overlap-second.csv](collections/overlap-second.csv) together. Seven original records yield six records included in analysis after one confirmed overlap is marked; AUTH_SUCCESS_AFTER_FAILURES emits one finding. Neither file alone meets the default failure threshold. See [collection walkthrough](../docs/collections.md) and [rule coverage](../docs/coverage.md). These fixtures are fictional.

@@ -1,0 +1,4 @@
+"Event ID","Timestamp","Source","Computer","Channel","EventRecordID","TargetUserName","TargetDomainName","IpAddress","LogonType","Message"
+"4625","2026-10-25T09:00:00Z","Microsoft-Windows-Security-Auditing","DC-LAB","Security","101","learner","LAB","198.51.100.42","3","Fictional event"
+"4625","2026-10-25T09:01:00Z","Microsoft-Windows-Security-Auditing","DC-LAB","Security","102","learner","LAB","198.51.100.42","3","Fictional event"
+"4625","2026-10-25T09:02:00Z","Microsoft-Windows-Security-Auditing","DC-LAB","Security","103","learner","LAB","198.51.100.42","3","Fictional event"
