@@ -118,7 +118,7 @@ npm test
 npm run package
 ~~~
 
-Node.js 22 or later is required only for developer tooling. For actual browser tests, run `npm ci --ignore-scripts`, `npx playwright install --with-deps chromium firefox`, then `npm run test:browser`. CI includes desktop Chromium, Firefox, mobile Chromium, and Windows PowerShell checks using a private real EVTX fixture. These development dependencies are never loaded by the analyser. See [test setup](docs/testing.md), [development](docs/development.md), and the [upgrade guide](UPGRADE_GUIDE.md).
+Node.js 22 or later is required only for developer tooling. For actual browser tests, run `npm ci --ignore-scripts`, `npx playwright install --with-deps chromium firefox`, then `npm run test:browser`. CI includes desktop Chromium, Firefox, mobile Chromium, and Windows PowerShell checks using a private real EVTX fixture. These development dependencies are never loaded by the analyser. See [test setup](docs/testing.md) and [development](docs/development.md).
 
 ## Know the limits
 

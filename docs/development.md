@@ -20,7 +20,7 @@ Preserve the violet theme, wide layout, full-width Field Guide followed by Quick
 
 ## Packaging and uploading
 
-The deterministic ZIP now places source files **directly at its root**, including index.html, scripts, docs, samples, tests, tools, and .github/workflows. This avoids an extra project folder when uploading. Copy the archive's extracted contents into the repository root, following [UPGRADE_GUIDE.md](../UPGRADE_GUIDE.md).
+The deterministic ZIP now places source files **directly at its root**, including index.html, scripts, docs, samples, tests, tools, and .github/workflows. Copy the archive's extracted contents into the repository root, beside the existing index.html and README.md. Preserve .github/workflows and the repository's Git history.
 
 Packaging uses fixed ZIP timestamps and sorted, uncompressed entries. SHA256SUMS.txt covers bundled source bytes. Git history, dependencies, browser binaries, test results, screenshots, and previous dist output are excluded. A checksum checks bytes, not event authenticity.
 
