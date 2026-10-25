@@ -94,3 +94,44 @@ test('keyboard focus, mobile width, stacked guides, and creator typography remai
   const fonts=await page.evaluate(()=>[getComputedStyle(document.querySelector('footer')).fontFamily,getComputedStyle(document.querySelector('.creator-credit p')).fontFamily]);
   expect(fonts[0]).toBe(fonts[1]);await expect(page.locator('.creator-credit p')).toHaveText('NAMITESH PANDEY');
 });
+const collectionFiles=()=>require('../collection-fixtures.cjs').files().map(file=>({name:file.name,mimeType:'text/csv',buffer:Buffer.from(file.text)}));
+test('multi-file chooser correlates evidence, filters duplicates, and saves/reopens every source',async({page})=>{
+  await page.locator('#csv-file').setInputFiles(collectionFiles());await expect(page.locator('#parse-status')).toContainText('7 events parsed');
+  await page.locator('#analyze-button').click();await expect(page.locator('#findings')).toContainText('6 supporting event(s)');
+  await page.getByText('Source files and duplicate handling',{exact:true}).click();await expect(page.locator('#source-summary')).toContainText('1 confirmed duplicates');
+  await page.locator('#filter-source').selectOption('source-2');await page.locator('#filter-duplicates').selectOption('duplicates');
+  await expect(page.locator('#event-rows > tr[data-event-uid]')).toHaveCount(1);await expect(page.locator('#event-rows')).toContainText('Duplicate of event-3');
+  await page.locator('.event-details summary').click();await expect(page.locator('.event-detail-body')).toContainText('second.csv');
+  const saved=await download(page,'#save-case'),document=JSON.parse(fs.readFileSync(await saved.path(),'utf8'));
+  expect(document.report.events).toHaveLength(7);expect(document.report.source.files).toHaveLength(2);
+  await page.reload();await page.getByText('Reopen a saved case',{exact:true}).click();await page.locator('#reopen-case-file').setInputFiles(await reopenPayload(saved));
+  await expect(page.locator('#reopen-status')).toContainText('Reopened');await expect(page.locator('#event-rows > tr[data-event-uid]')).toHaveCount(7);
+  await expect(page.locator('#findings')).toContainText('6 supporting event(s)');
+});
+test('mixed-format drag and drop preserves the current case if a later file fails',async({page})=>{
+  await load(page,'account-persistence.csv');await notes(page);page.on('dialog',dialog=>dialog.accept());
+  const transfer=await page.evaluateHandle(()=>{const data=new DataTransfer();data.items.add(new File(['Event ID\n1102'],'valid.csv',{type:'text/csv'}));data.items.add(new File(['{bad'],'broken.json',{type:'application/json'}));return data;});
+  await page.locator('#drop-zone').dispatchEvent('drop',{dataTransfer:transfer});await expect(page.locator('#parse-status')).toContainText('broken.json');
+  await expect(page.locator('#case-notes')).toHaveValue('Continue this review later.');await expect(page.locator('#event-rows > tr[data-event-uid]')).toHaveCount(2);
+  await page.locator('#csv-file').setInputFiles([path.join(root,'samples/benign-process-review.csv'),path.join(root,'samples/authentication-sequence.xml')]);
+  await expect(page.locator('#parse-status')).toContainText('8 events parsed');await page.locator('#analyze-button').click();
+  const saved=await download(page,'#export-json'),report=JSON.parse(fs.readFileSync(await saved.path(),'utf8'));
+  expect(report.events.map(event=>event.inputFormat)).toEqual(['csv','csv',...Array(6).fill('xml')]);expect(report.source.files).toHaveLength(2);
+});
+test('coverage explains command-line gaps, disabled rules, and remains within the viewport',async({page})=>{
+  await page.locator('#csv-file').setInputFiles({name:'missing.csv',mimeType:'text/csv',buffer:Buffer.from('Event ID,NewProcessName\n4688,powershell.exe')});
+  await expect(page.locator('#parse-status')).toContainText('events parsed');await page.locator('#analyze-button').click();
+  await page.getByText('Per-rule coverage and data gaps',{exact:true}).click();
+  const row=page.locator('.rule-coverage-item').filter({has:page.locator('small',{hasText:'PS_ENCODED'})});await row.locator('summary').first().click();
+  await expect(row).toContainText('PowerShell command line');await expect(row).toContainText('Insufficient data');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await page.getByText('Detection rules and optional tuning profile',{exact:true}).click();
+  await page.locator('#rule-profile-file').setInputFiles({name:'profile.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({schemaVersion:'1.0',id:'test',version:'1',rules:{PS_ENCODED:{enabled:false}}}))});
+  await expect(page.locator('#rule-profile-status')).toContainText('1 disabled');await expect(row.locator('.coverage-state')).toHaveText('Disabled');
+});
+test('multi-file small-file fallback enforces combined limits and keeps all data on failure',async({page})=>{
+  await page.addInitScript(()=>{window.Worker=undefined;});await page.reload();await page.locator('#csv-file').setInputFiles(collectionFiles());
+  await expect(page.locator('#parse-status')).toContainText('7 events parsed');await page.locator('#analyze-button').click();
+  await page.locator('#csv-file').setInputFiles([{name:'one.csv',mimeType:'text/csv',buffer:Buffer.alloc(1100000,32)},{name:'two.csv',mimeType:'text/csv',buffer:Buffer.alloc(1100000,32)}]);
+  await expect(page.locator('#parse-status')).toContainText('Background processing is unavailable');await expect(page.locator('#event-rows > tr[data-event-uid]')).toHaveCount(7);
+});

@@ -30,7 +30,7 @@ for(const [label,value] of [
 test('exports include the exact profile and resolved rule points, including disabled rules',()=>{
   const chosen=profile({AUTH_SUCCESS_AFTER_FAILURES:{points:[20,20]},TASK_DELETED:{enabled:false}}),ev=events();
   const report=r.createReport({events:ev,findings:a.analyze(ev,{},chosen),ruleProfile:chosen,source:{name:'lab.json',format:'json'},scope:{mode:'all'}});
-  assert.equal(report.schemaVersion,'1.1');assert.equal(report.ruleProfile.id,'test-profile');
+  assert.equal(report.schemaVersion,'1.2');assert.equal(report.ruleProfile.id,'test-profile');
   assert.equal(report.ruleCatalog.find(rule=>rule.id==='AUTH_SUCCESS_AFTER_FAILURES').points,40);
   assert.equal(report.ruleCatalog.find(rule=>rule.id==='TASK_DELETED').enabled,false);
   assert.ok(r.findingsCsv(report).includes('Rule profile (JSON)'));assert.ok(r.eventsCsv(report).includes('Source record'));

@@ -39,7 +39,7 @@ function app() {
   const context=vm.createContext({window:fakeWindow,document,console,Blob,TextDecoder,TextEncoder,setTimeout:testTimeout,clearTimeout,
     URL:{createObjectURL:blob=>{const url='blob:'+urls.size;urls.set(url,blob);return url;},revokeObjectURL:url=>urls.delete(url)},
     Event:class{constructor(type){this.type=type;}}});
-  for(const file of ['rules.generated.js','rule-profiles.js','analysis.js','inputs.js','report.js','case-file.js','task-runner.js','script.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context);
+  for(const file of ['rules.generated.js','rule-profiles.js','analysis.js','inputs.js','collection.js','report.js','case-file.js','task-runner.js','script.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context);
   return {
     el:id=>elements.get(id), document, downloads, window:fakeWindow, windowEvents,
     load:async (text,name='case.csv')=>{elements.get('csv-file').files=[{name,size:Buffer.byteLength(text),text:async()=>text}];await elements.get('csv-file').trigger('change');await elements.get('analyze-button').trigger('click');},
@@ -226,7 +226,7 @@ test('replacing a case can be declined and failed/cancelled loads preserve its d
   ui.el('csv-file').files=[{name:'bad.csv',size:30,text:async()=> 'no valid headers\nbad'}];await ui.el('csv-file').trigger('change');
   assert.ok(ui.el('parse-status').textContent.includes('Event ID'));assert.equal(ui.el('case-notes').value,'keep this');
   let resolve;ui.el('csv-file').files=[{name:'slow.csv',size:30,text:()=>new Promise(done=>{resolve=done;})}];
-  const pending=ui.el('csv-file').trigger('change');await ui.el('cancel-task').trigger('click');await pending;
+  const pending=ui.el('csv-file').trigger('change');await new Promise(done=>setTimeout(done,5));await ui.el('cancel-task').trigger('click');await pending;
   resolve('Event ID,Message\n9999,stale');
   assert.equal(ui.el('report').hidden,false);assert.equal(ui.el('case-notes').value,'keep this');
   assert.ok(ui.el('file-name').textContent.includes('Correlation and Policy Lab'));assert.equal(ui.el('cancel-task').hidden,true);
@@ -262,6 +262,34 @@ test('invalid or superseded rule profiles cannot replace the active profile',asy
   let resolve;ui.el('rule-profile-file').files=[{name:'slow.json',size:10,text:()=>new Promise(done=>{resolve=done;})}];const pending=ui.el('rule-profile-file').trigger('change');
   await ui.sample('normal');resolve('{"schemaVersion":"1.0","id":"late","version":"1","rules":{}}');await pending;
   await ui.el('export-json').trigger('click');assert.equal(JSON.parse(await ui.downloads.at(-1).blob.text()).ruleProfile.id,'default');
+});
+test('multi-file UI filters preserve every original record in saved cases and explain duplicates',async()=>{
+  const ui=app(),files=require('./collection-fixtures.cjs').files();
+  ui.el('csv-file').files=files.map(file=>({name:file.name,size:Buffer.byteLength(file.text),text:async()=>file.text}));
+  await ui.el('csv-file').trigger('change');await ui.el('analyze-button').trigger('click');
+  assert.match(ui.el('source-summary').textContent,/1 confirmed duplicates/);assert.ok(ui.el('rule-coverage-list').innerHTML.includes('AUTH_SUCCESS_AFTER_FAILURES'));
+  assert.ok(ui.el('event-rows').innerHTML.includes('first.csv'));assert.ok((await ui.inspect('event-3')).includes('event-4'));
+  ui.el('filter-source').value='source-2';await ui.el('filter-source').trigger('input');
+  ui.el('filter-duplicates').value='duplicates';await ui.el('filter-duplicates').trigger('input');
+  assert.deepEqual([...ui.el('event-rows').innerHTML.matchAll(/data-event-uid="([^"]+)"/g)].map(match=>match[1]),['event-4']);
+  await ui.el('save-case').trigger('click');const saved=await ui.downloads.at(-1).blob.text(),report=JSON.parse(saved).report;
+  assert.equal(report.events.length,7);assert.equal(report.source.files.length,2);assert.equal(report.ruleCoverageScope,'entire dataset');
+  const reopened=app();reopened.el('reopen-case-file').files=[{name:'case.json',size:Buffer.byteLength(saved),text:async()=>saved}];
+  await reopened.el('reopen-case-file').trigger('change');assert.match(reopened.el('source-summary').textContent,/1 confirmed duplicates/);
+  assert.equal([...reopened.el('event-rows').innerHTML.matchAll(/data-event-uid=/g)].length,7);
+});
+test('a malformed later file cannot replace a current case or its notes with partial input',async()=>{
+  const ui=app();await ui.sample('account');ui.el('case-notes').value='Preserve this';await ui.el('case-notes').trigger('input');const before=ui.el('event-rows').innerHTML;
+  ui.el('csv-file').files=[{name:'good.csv',size:20,text:async()=> 'Event ID\n1102'},{name:'broken.json',size:5,text:async()=> '{bad'}];
+  await ui.el('csv-file').trigger('change');assert.match(ui.el('parse-status').textContent,/broken.json/);assert.equal(ui.el('case-notes').value,'Preserve this');assert.equal(ui.el('event-rows').innerHTML,before);
+});
+test('rule coverage updates with profile changes while showing data gaps for rules with no findings',async()=>{
+  const ui=app();await ui.load('Event ID,NewProcessName\n4688,powershell.exe');
+  assert.match(ui.el('rule-coverage-list').innerHTML,/PowerShell command line/);assert.match(ui.el('rule-coverage-list').innerHTML,/Insufficient data/);
+  const text=JSON.stringify({schemaVersion:'1.0',id:'disabled',version:'1',rules:{PS_ENCODED:{enabled:false}}});
+  ui.el('rule-profile-file').files=[{name:'profile.json',size:text.length,text:async()=>text}];await ui.el('rule-profile-file').trigger('change');
+  await ui.el('export-json').trigger('click');const report=JSON.parse(await ui.downloads.at(-1).blob.text());
+  assert.equal(report.ruleCoverage.find(item=>item.ruleId==='PS_ENCODED').state,'disabled');
 });
 
 

@@ -22,7 +22,7 @@ for(const format of ['csv','xml','json','jsonl'])test('saved '+format+' case res
   assert.ok(restored.events[0].date instanceof Date);assert.equal(restored.source.name,original.source.name);
 });
 test('full v1.4 JSON reports reopen in original record order, regardless of export sorting',()=>{
-  const original=input();original.events.reverse();const report=reports.createReport(original);report.tool.version='1.4.0';
+  const original=input();original.events.reverse();const report=reports.createReport(original);report.tool.version='1.4.0';report.schemaVersion='1.1';
   const restored=cases.reopenCase(JSON.stringify(report));
   assert.deepEqual(restored.events.map(e=>e.index),[1,2,3,4,5,6]);assert.equal(restored.origin.toolVersion,'1.4.0');
   assert.ok(restored.notices.some(note=>note.includes('Saved with tool 1.4.0')));
@@ -73,6 +73,12 @@ test('duplicate JSON keys are rejected before case fields can be overwritten',()
 test('saving a filtered collection is refused',()=>{const original=input();original.scope.mode='view';assert.throws(()=>cases.saveCase(original),/entire dataset/);});
 test('saved-case schema and report origin are exported without browser storage',()=>{
   const original=input();original.caseOrigin={fileName:'earlier-case.json',toolVersion:'1.4.0'};
-  const saved=JSON.parse(cases.saveCase(original));assert.equal(saved.kind,'fieldnotes-case');assert.equal(saved.schemaVersion,'1.0');
+  const saved=JSON.parse(cases.saveCase(original));assert.equal(saved.kind,'fieldnotes-case');assert.equal(saved.schemaVersion,'1.1');
   assert.equal(saved.report.caseOrigin.fileName,'earlier-case.json');assert.equal(saved.report.events[0]._searchText,undefined);
+});
+test('legacy v1.5 envelope 1.0 and report 1.1 cases remain readable',()=>{
+  const saved=document();saved.schemaVersion='1.0';saved.report.schemaVersion='1.1';saved.report.tool.version='1.5.0';
+  delete saved.report.ruleCoverage;delete saved.report.duplicates;
+  const restored=cases.reopenCase(JSON.stringify(saved));assert.equal(restored.events.length,6);assert.equal(restored.findings[0].score,60);
+  assert.equal(restored.source.files.length,1);assert.equal(restored.origin.toolVersion,'1.5.0');
 });

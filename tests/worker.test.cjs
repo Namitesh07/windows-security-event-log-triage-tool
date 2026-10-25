@@ -26,7 +26,7 @@ class BrowserWorker {
 }
 function runner(worker=true) {
   const window={location:{protocol:'https:'},Worker:worker ? BrowserWorker : undefined,
-    EventTriageAnalysis:require('../analysis.js'),EventTriageInputs:require('../inputs.js'),EventTriageReports:require('../report.js'),EventTriageCases:require('../case-file.js')};
+    EventTriageAnalysis:require('../analysis.js'),EventTriageInputs:require('../inputs.js'),EventTriageCollection:require('../collection.js'),EventTriageReports:require('../report.js'),EventTriageCases:require('../case-file.js')};
   vm.runInNewContext(fs.readFileSync(path.join(project,'task-runner.js'),'utf8'),{window,setTimeout});
   return new window.EventTriageTasks.TaskRunner();
 }
@@ -92,4 +92,14 @@ for(const worker of [true,false])test((worker?'worker':'fallback')+' saves and r
   const restored=await task.run('reopen-case',{file:new Blob([saved]),bytes:Buffer.byteLength(saved),browserTimezone:'UTC'});
   assert.equal(restored.case.notes,'Retain notes');assert.equal(restored.events.length,6);assert.ok(restored.events[0].date instanceof Date);
   assert.equal(restored.findings[0].score,60);assert.equal(restored.findings[0].eventUids.length,6);
+});
+for(const worker of [true,false])test((worker?'worker':'fallback')+' imports collections and returns rule coverage with duplicate-safe findings',async()=>{
+  const task=runner(worker),files=require('./collection-fixtures.cjs').files();
+  const parsed=await task.run('parse-files',{files});assert.equal(parsed.events.length,7);assert.equal(parsed.events[3].duplicateOf,'event-3');
+  assert.ok(parsed.events[0]._searchText.includes('first.csv'));
+  const assessed=await task.run('analyze',{events:parsed.events,includeCoverage:true,settings:{}});
+  assert.equal(assessed.findings[0].eventUids.length,6);assert.equal(assessed.ruleCoverage.find(item=>item.ruleId==='AUTH_SUCCESS_AFTER_FAILURES').findingCount,1);
+});
+test('fallback collection checks use actual combined file sizes even without a caller byte hint',async()=>{
+  const task=runner(false);await assert.rejects(task.run('parse-files',{files:[{name:'large.csv',bytes:2*1024*1024+1,text:'Event ID\n1102'}]}),/Background processing is unavailable/);
 });
