@@ -48,7 +48,7 @@ Case notes remain in the current case across tuning. Finding annotations are ass
 
 ## Exports and reproducibility
 
-Report schema 1.1 includes the exact normalized ruleProfile, the catalog rulesVersion, enabled state, resolved contribution weights, and effective analysis settings. JSON includes every catalog ID, including disabled rules. CSV appends profile JSON. Compare these values when comparing analyses; a profile name/version alone is insufficient.
+Report schema 1.2 includes the exact normalized ruleProfile, the catalog rulesVersion, enabled state, resolved contribution weights, and effective analysis settings. JSON includes every catalog ID, including disabled rules. CSV appends profile JSON. Compare these values when comparing analyses; a profile name/version alone is insufficient.
 
 Source content, timezone context, engine/tool version, and collection completeness also affect results. [Saved cases and entire-dataset JSON reports](cases.md) can be reopened with validation and current-engine re-analysis; they are not integrity proofs.
 
@@ -65,3 +65,5 @@ npm test
 ~~~
 
 Commit both the catalog and generated asset yourself. [rules.generated.js](../rules.generated.js) is a checked-in, deeply frozen browser/CommonJS asset generated without external dependencies. It keeps direct-file mode working without a JSON fetch. Do not hand-edit it: CI rejects stale generation and catalog/engine ID mismatches. Contributions are explicit labels/points, never executable text.
+
+Per-rule coverage reflects the profile actually applied to the report. Disabled rules are labelled Disabled, while enabled rules distinguish missing evidence/fields from assessed input. Changing a profile recalculates findings and coverage together. See [coverage](coverage.md).

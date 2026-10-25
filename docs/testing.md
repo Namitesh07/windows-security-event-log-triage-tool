@@ -10,7 +10,7 @@ npm test
 npm run package -- --check
 ~~~
 
-The Node suite covers parsing, detections, report safety, worker/fallback behaviour, profiles, case round trips, malformed cases, annotation retention, cancellation, and reproducible source packaging.
+The Node suite covers parsing, detections, report safety, worker/fallback behaviour, profiles, mixed-file collections, duplicate thresholds/provenance, per-rule coverage, current and legacy case round trips, malformed cases, annotation retention, cancellation, and reproducible source packaging.
 
 ## Actual browser tests
 
@@ -28,6 +28,8 @@ The suite uses a loopback-only static server at http://127.0.0.1:4173 and fictio
 
 - CSV/XML/JSON/JSONL uploads through actual file choosers and worker processing;
 - complete-case downloads and reopening, including notes, tuned scores, and thresholds;
+- multi-file chooser/drop flows, mixed formats, duplicate filters, failed-batch preservation, and combined fallback limits;
+- visible per-rule field gaps and coverage updates after profile changes;
 - full report compatibility, malformed/scoped-file rejection, and preservation of the current case;
 - cancellation of a pending worker and subsequent uploads;
 - spreadsheet-safe CSV downloads and escaped source markup;
@@ -71,8 +73,9 @@ These tests are included in Windows CI. A Linux environment cannot execute the W
 
 Primary references: [Playwright browser setup](https://playwright.dev/docs/browsers), [Playwright projects](https://playwright.dev/docs/test-projects), [Playwright test server](https://playwright.dev/docs/test-webserver), and [Microsoft wevtutil](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wevtutil).
 
-## Validation of the delivered v1.5.0 package — 24 October 2026
+## Validation of the delivered v1.6.0 package — 25 October 2026
 
-- Core source checks and **204 Node tests passed** on Node 24.19.0.
-- **20 actual browser tests passed** across desktop and mobile Chromium, using Chromium 153.0.8010.0 through the documented executable override. The standard Playwright browser download endpoint was unavailable in the preparation environment.
-- The Firefox project and real-EVTX Windows integration are included in the workflows but were **not executed in this Linux preparation environment**. Review those CI jobs after uploading and committing the files.
+- Core source checks and **249 Node tests passed** on Node 24.19.0.
+- **28 actual browser tests passed** across desktop and mobile Chromium, using Chromium 153.0.8010.0 through the documented executable override. Browser-managed binaries were not available in this preparation environment.
+- The configured suite contains **42 tests** across Chromium desktop, Firefox desktop, and Chromium mobile. Firefox was not run locally for this ZIP.
+- The Windows converter and its integration test are unchanged from the main baseline that passed GitHub Windows validation. This uncommitted ZIP has not run CI; Windows and Firefox checks should run after you upload and commit it.

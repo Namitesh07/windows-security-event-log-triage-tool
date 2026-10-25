@@ -99,3 +99,7 @@ These entries describe the expected Windows provider/channel. The application re
 - [4719 audit-policy changes](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4719)
 - [4946 local firewall-rule changes](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4946)
 - [PowerShell logging on Windows](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_logging_windows)
+
+## Per-rule coverage
+
+Open **Per-rule coverage and data gaps** after analysis to inspect required fields, relevant/eligible counts, missing companion records, profile-disabled rules, and logging context for every catalog rule. This includes rules that emitted no findings. Confirmed cross-file duplicates are excluded from detections and coverage counts; their original evidence remains visible. See [coverage](coverage.md) and [collections](collections.md).

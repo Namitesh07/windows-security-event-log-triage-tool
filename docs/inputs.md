@@ -6,9 +6,9 @@ The browser accepts **.csv, .xml, .json, .jsonl, and .ndjson**. The extension se
 
 | Limit | Value |
 | --- | --- |
-| Hosted HTTP(S) mode with workers | 25 MB per file |
-| Direct-file / no-worker fallback | 2 MB per file |
-| Accepted event records | 100,000 per file |
+| Hosted HTTP(S) mode with workers | 25 MB combined; up to 20 files |
+| Direct-file / no-worker fallback | 2 MB combined; up to 20 files |
+| Source records, including skipped IDs and duplicates | 100,000 combined |
 | Distinct normalized fields in XML/JSON adapters | 512 across the file |
 | XML/JSON nesting | 48 levels |
 | Optional rule-profile file | 64 KB |
@@ -109,3 +109,9 @@ Open the resulting XML with the browser file chooser. Conversion needs access to
 The evidence table and exports distinguish CSV rows, XML start lines, JSON record numbers, and JSON Lines physical lines. UIDs identify records only within the loaded dataset. They are not Windows EventRecordIDs, hashes, or proof of record authenticity. See [reports](reports.md) for the appended provenance columns.
 
 Microsoft references: [Windows Event schema](https://learn.microsoft.com/en-us/windows/win32/wes/eventschema-schema), [EventType](https://learn.microsoft.com/en-us/windows/win32/wes/eventschema-eventtype-complextype), and [Get-WinEvent](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.diagnostics/get-winevent).
+
+## Multiple-file collections (v1.6.0)
+
+Select or drop up to 20 supported event exports in one operation, in any mixture of supported formats. The limits are 25 MB combined in worker mode, 2 MB combined in fallback mode, and 100,000 source records including skipped Event IDs and duplicates. Decoded text is also bounded to 25 MB combined. Each file must contain at least one accepted event. A bad file rejects the whole selection and names the file; the previous case remains available. A new selection starts a replacement case rather than appending silently.
+
+Each file retains its own field layout, original record/line numbers, and diagnostics. Records get globally unique case-local UIDs and a source-file ID. Duplicate checking uses Windows record identity plus source-field equality across files; original records are never discarded. See [collections](collections.md).

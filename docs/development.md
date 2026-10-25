@@ -12,9 +12,9 @@ Checks validate syntax, generated rules, catalog/engine IDs, tool/package/lock v
 
 ## Runtime files
 
-Script order is **rules.generated.js → rule-profiles.js → analysis.js → inputs.js → report.js → case-file.js → task-runner.js → script.js**. The worker imports the first six modules itself. Keep worker.js with the page at the same origin. Direct-file mode supports small files without a JSON fetch.
+Script order is **rules.generated.js → rule-profiles.js → analysis.js → inputs.js → collection.js → report.js → case-file.js → task-runner.js → script.js**. The worker imports the first seven modules itself. Keep worker.js with the page at the same origin. Direct-file mode supports small files without a JSON fetch.
 
-Serve locally with **python3 -m http.server 8000 --bind 127.0.0.1**. Event imports support 25 MB with workers or 2 MB in fallback mode; saved-case reopening supports 50 MB with workers or 2 MB in fallback mode. Both cap accepted records at 100,000.
+Serve locally with **python3 -m http.server 8000 --bind 127.0.0.1**. Event collections support up to 20 files, 25 MB combined with workers or 2 MB combined in fallback mode; saved-case reopening supports 50 MB with workers or 2 MB in fallback mode. New event imports cap source records at 100,000, including skipped and duplicate records; saved cases cap accepted records at 100,000.
 
 Preserve the violet theme, wide layout, full-width Field Guide followed by Quick Reference, and uppercase creator credit. Review case save/reopen flows, unsaved notes, profile changes, invalid/cancelled inputs, exports, keyboard use, and target devices.
 
@@ -28,6 +28,8 @@ Packaging uses fixed ZIP timestamps and sorted, uncompressed entries. SHA256SUMS
 
 [CI](../.github/workflows/ci.yml) runs core checks/tests on Node 22/24, actual Chromium/Firefox/mobile browser flows, and Windows converter smoke/real-EVTX checks. [Release validation](../.github/workflows/release-check.yml) gates source packaging on Windows and browser validation.
 
-Workflow permissions are read-only for repository contents and action references are pinned. Checkouts do not persist credentials. Release tags must equal v plus package.json's version, such as **v1.5.0**. Manual dispatch validates the current branch without requiring a tag. Successful runs retain a source ZIP and checksum artifact for 14 days, without publishing a GitHub Release or deploying Pages.
+Workflow permissions are read-only for repository contents and action references are pinned. Checkouts do not persist credentials. Release tags must equal v plus package.json's version, such as **v1.6.0**. Manual dispatch validates the current branch without requiring a tag. Successful runs retain a source ZIP and checksum artifact for 14 days, without publishing a GitHub Release or deploying Pages.
 
 For exact test setup and Windows requirements, read [testing.md](testing.md).
+
+Collection parsing and conservative duplicate links live in collection.js. analysis.js owns coverage and uses the same normalized fields and correlation helpers as rule evaluation. Coverage and duplicate links are recomputed when cases reopen. See [collections](collections.md) and [coverage](coverage.md).
