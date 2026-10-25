@@ -2,7 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const root=path.join(__dirname,'..'),pkg=require('../package.json');
 const rootFiles=['index.html','styles.css','analysis.js','inputs.js','collection.js','rules.generated.js','rule-profiles.js','report.js','case-file.js','task-runner.js','worker.js','script.js','package.json','package-lock.json','playwright.config.cjs','README.md','CHANGELOG.md','.gitattributes','.gitignore'];
-const dirs=['.github','docs','rules','samples','scripts','tests','tools'];
+const dirs=['.github','assets','docs','rules','samples','scripts','tests','tools'];
 function sourceFiles(){
   const result=[...rootFiles];
   function visit(relative){for(const entry of fs.readdirSync(path.join(root,relative),{withFileTypes:true})){const name=relative+'/'+entry.name;if(entry.isSymbolicLink())throw new Error('Packaging symlinks is not supported: '+name);if(entry.isDirectory())visit(name);else result.push(name);}}

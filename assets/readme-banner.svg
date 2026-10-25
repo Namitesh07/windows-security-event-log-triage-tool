@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="340" viewBox="0 0 1200 340" role="img" aria-labelledby="title description">
+  <title id="title">Fieldnotes — Windows event log triage</title>
+  <desc id="description">Evidence, with context. A fictional example shows five failed logons and one successful logon grouped into a sequence for review.</desc>
+  <defs>
+    <linearGradient id="background" x2="1" y2="1"><stop stop-color="#100c19"/><stop offset="1" stop-color="#08070e"/></linearGradient>
+    <radialGradient id="violet"><stop stop-color="#704497" stop-opacity=".36"/><stop offset="1" stop-color="#704497" stop-opacity="0"/></radialGradient>
+    <radialGradient id="blue"><stop stop-color="#39649d" stop-opacity=".23"/><stop offset="1" stop-color="#39649d" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="1" y="1" width="1198" height="338" rx="24" fill="url(#background)" stroke="#463451"/>
+  <ellipse cx="165" cy="95" rx="360" ry="230" fill="url(#violet)"/>
+  <ellipse cx="1070" cy="290" rx="330" ry="250" fill="url(#blue)"/>
+  <path d="M675 1v338M1 278h1198" stroke="#3d304c" stroke-opacity=".45"/>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <g fill="#d4a5ef" font-family="Consolas,monospace" font-size="14" letter-spacing="3">
+      <path d="M54 39h12l10 10v16H54zM66 39v10h10" fill="none" stroke="#d4a5ef" stroke-width="1.8"/>
+      <text x="91" y="58">FIELDNOTES / WINDOWS</text>
+    </g>
+    <text x="52" y="137" fill="#f4eff9" font-size="66" font-weight="700" letter-spacing="-2">Evidence,</text>
+    <text x="52" y="207" fill="#edb7d5" font-size="66" font-weight="700" letter-spacing="-2">with context.</text>
+    <text x="56" y="249" fill="#b7adc5" font-size="21">Windows event log triage, in your browser.</text>
+    <text x="56" y="313" fill="#b7adc5" font-family="Consolas,monospace" font-size="13" letter-spacing="1.4">LOCAL ANALYSIS · VISIBLE RULES · TRACEABLE EVIDENCE</text>
+    <text x="726" y="57" fill="#b7adc5" font-family="Consolas,monospace" font-size="13" letter-spacing="2">FOLLOW THE RECORDS</text>
+    <rect x="724" y="79" width="422" height="176" rx="16" fill="#171120" stroke="#5a416e"/>
+    <path d="M746 140h378M746 197h378" stroke="#3d304c"/>
+    <circle cx="755" cy="111" r="4" fill="#d4a5ef"/>
+    <text x="776" y="118" fill="#d4a5ef" font-family="Consolas,monospace" font-size="22">4625</text>
+    <text x="858" y="117" fill="#f4eff9" font-size="18">5 failed logons</text>
+    <circle cx="755" cy="169" r="4" fill="#a9bdfa"/>
+    <text x="776" y="176" fill="#a9bdfa" font-family="Consolas,monospace" font-size="22">4624</text>
+    <text x="858" y="175" fill="#f4eff9" font-size="18">1 successful logon</text>
+    <text x="747" y="232" fill="#edb7d5" font-size="18" font-weight="600">One sequence to investigate</text>
+    <path d="M1091 225h27m-7-7 7 7-7 7" fill="none" stroke="#edb7d5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="725" y="313" fill="#93859f" font-family="Consolas,monospace" font-size="12" letter-spacing="2">FICTIONAL EXAMPLE · REVIEW WITH CONTEXT</text>
+  </g>
+</svg>

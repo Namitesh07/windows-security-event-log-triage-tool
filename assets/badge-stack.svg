@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="210" height="26" viewBox="0 0 210 26" role="img" aria-label="Built with HTML, CSS, and JavaScript">
+  <title>Built with HTML, CSS, and JavaScript</title>
+  <defs><clipPath id="rounded"><rect width="210" height="26" rx="5"/></clipPath></defs>
+  <g clip-path="url(#rounded)"><rect width="210" height="26" fill="#17121f"/><rect x="73" width="137" height="26" fill="#edb7d5"/></g>
+  <rect x=".5" y=".5" width="209" height="25" rx="4.5" fill="none" stroke="#5a4568" stroke-opacity=".6"/>
+  <g font-family="Segoe UI,Arial,sans-serif" text-anchor="middle" font-weight="600">
+    <text x="36.5" y="17.2" font-size="10.5" letter-spacing="1" fill="#e4dceb">STACK</text>
+    <text x="141.5" y="17.2" font-size="11.5" fill="#1b1025">HTML · CSS · JS</text>
+  </g>
+</svg>
