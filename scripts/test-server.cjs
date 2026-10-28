@@ -1,7 +1,7 @@
 /* Loopback-only static server for browser validation. Never receives event files. */
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'..'),port=Number(process.env.TRIAGE_TEST_PORT||4173);
-const runtime=new Set(['index.html','styles.css','rules.generated.js','rule-profiles.js','analysis.js','inputs.js','collection.js','report.js','case-file.js','task-runner.js','worker.js','script.js']);
+const runtime=new Set(['index.html','styles.css','rules.generated.js','rule-profiles.js','analysis.js','inputs.js','collection.js','report.js','case-file.js','print-report.js','task-runner.js','worker.js','script.js']);
 const types={'.html':'text/html','.css':'text/css','.js':'text/javascript','.json':'application/json','.jsonl':'application/x-ndjson','.xml':'application/xml','.csv':'text/csv','.ps1':'text/plain'};
 const server=http.createServer((request,response)=>{
   if(!['GET','HEAD'].includes(request.method)){response.writeHead(405);response.end();return;}

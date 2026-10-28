@@ -135,3 +135,35 @@ test('multi-file small-file fallback enforces combined limits and keeps all data
   await page.locator('#csv-file').setInputFiles([{name:'one.csv',mimeType:'text/csv',buffer:Buffer.alloc(1100000,32)},{name:'two.csv',mimeType:'text/csv',buffer:Buffer.alloc(1100000,32)}]);
   await expect(page.locator('#parse-status')).toContainText('Background processing is unavailable');await expect(page.locator('#event-rows > tr[data-event-uid]')).toHaveCount(7);
 });
+test('original-byte hashes survive case reopening with an explicit recorded status',async({page})=>{
+  const bytes=Buffer.concat([Buffer.from([255,254]),Buffer.from('Event ID,Message\r\n1102,Fictional source\r\n','utf16le')]);
+  const expected=require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+  await page.locator('#csv-file').setInputFiles({name:'original.csv',mimeType:'text/csv',buffer:bytes});await expect(page.locator('#parse-status')).toContainText('events parsed');await page.locator('#analyze-button').click();
+  await page.getByText('Source files and duplicate handling',{exact:true}).click();await expect(page.locator('#source-list')).toContainText(expected);await expect(page.locator('#source-list')).toContainText('Computed from original file bytes');
+  const saved=await download(page,'#save-case'),data=JSON.parse(fs.readFileSync(await saved.path(),'utf8'));expect(data.report.source.files[0].fingerprint.hex).toBe(expected);
+  await page.getByText('Reopen a saved case',{exact:true}).click();await page.locator('#reopen-case-file').setInputFiles(await reopenPayload(saved));await expect(page.locator('#reopen-status')).toContainText('Source SHA-256 values');
+  await expect(page.locator('#source-list')).toContainText('not reverified');await expect(page.locator('#source-list')).toContainText(expected);
+});
+test('ATT&CK context uses current official links without loading external pages',async({page})=>{
+  await page.locator('#csv-file').setInputFiles({name:'clear.csv',mimeType:'text/csv',buffer:Buffer.from('Event ID,Message\n1102,Fictional log clear')});
+  await expect(page.locator('#parse-status')).toContainText('events parsed');await page.locator('#analyze-button').click();
+  const context=page.locator('#findings .attack-context').first();await context.locator('summary').click();
+  const link=context.locator('a');await expect(link).toHaveAttribute('href','https://attack.mitre.org/techniques/T1685/005/');await expect(link).toHaveAttribute('rel','noopener noreferrer');
+  await expect(context).toContainText('not confirmed techniques');const json=await download(page,'#export-json'),data=JSON.parse(fs.readFileSync(await json.path(),'utf8'));expect(data.findings[0].attack.techniques[0].id).toBe('T1685.005');
+});
+test('printable HTML downloads and renders notes, hashes, references, and print styles safely',async({page,context})=>{
+  await load(page,'account-persistence.csv');await notes(page);const saved=await download(page,'#export-print'),file=await saved.path();
+  expect(saved.suggestedFilename()).toMatch(/-print\.html$/);const html=fs.readFileSync(file,'utf8');expect(html).toContain('Continue this review later.');expect(html).not.toMatch(/<script\b/i);
+  const review=await context.newPage();let external=0;review.on('request',request=>{if(!request.url().startsWith('http://127.0.0.1:4173/'))external++;});
+  await review.route('http://127.0.0.1:4173/__print-review',route=>route.fulfill({contentType:'text/html',body:html}));await review.goto('http://127.0.0.1:4173/__print-review');
+  await expect(review.locator('h1')).toHaveText('Browser investigation');await expect(review.locator('main')).toContainText('Verify the account owner.');await expect(review.locator('main')).toContainText('T1098.007');
+  expect(await review.locator('script, img, iframe, link').count()).toBe(0);expect(await review.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await review.emulateMedia({media:'print'});await expect(review.locator('.screen-help')).toBeHidden();expect(external).toBe(0);await review.close();
+});
+test('print downloads span findings pages and respect evidence scope without clearing unsaved notes',async({page})=>{
+  const source='Event ID,Message\n'+Array.from({length:25},(_,i)=>'1102,Fictional clear '+i).join('\n');
+  await page.locator('#csv-file').setInputFiles({name:'paged.csv',mimeType:'text/csv',buffer:Buffer.from(source)});await expect(page.locator('#parse-status')).toContainText('25 events parsed');await page.locator('#analyze-button').click();await notes(page);
+  await expect(page.locator('#findings .finding-card')).toHaveCount(20);const complete=await download(page,'#export-print');expect((fs.readFileSync(await complete.path(),'utf8').match(/<article class="finding">/g)||[]).length).toBe(25);
+  await page.locator('#event-search').fill('no matching evidence');await page.locator('#export-scope').selectOption('view');const scoped=await download(page,'#export-print'),html=fs.readFileSync(await scoped.path(),'utf8');
+  expect(html).toContain('Current evidence and filters');expect(html).toContain('No complete configured finding');expect(html).toContain('Continue this review later.');await expect(page.locator('#case-status')).toContainText('Notes changed');
+});
