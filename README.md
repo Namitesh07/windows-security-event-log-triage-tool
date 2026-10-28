@@ -28,9 +28,9 @@ A browser-based investigation workspace for students and early-career analysts. 
 | Feature | Inside the workspace |
 | --- | --- |
 | **Investigate activity** | Review authentication patterns, account/group changes, process and PowerShell cues, services, tasks, and audit/firewall changes. |
-| **Combine evidence** | Open up to **20 files** together. Track each source and inspect confirmed duplicates without discarding original records. |
-| **Understand the result** | Explore **23 visible rules**, score contributions, supporting records, benign explanations, and per-rule data gaps. |
-| **Continue the case** | Add analyst notes, filter evidence, save/reopen investigations, and export JSON or CSV with spreadsheet formula protection. |
+| **Combine evidence** | Open up to **20 files** together. Track each source and its SHA-256 fingerprint, and inspect confirmed duplicates without discarding original records. |
+| **Understand the result** | Explore **23 visible rules**, score contributions, supporting records, benign explanations, and per-rule data gaps, and ATT&CK learning references. |
+| **Continue the case** | Add analyst notes, filter evidence, save/reopen investigations, and export JSON, CSV with spreadsheet formula protection, or printable investigation reports. |
 
 **Accepted formats:** CSV · Windows Event XML · JSON · JSON Lines/NDJSON. Raw EVTX needs [local conversion](docs/inputs.md#convert-evtx-locally-on-windows).
 
@@ -67,9 +67,9 @@ This is an **educational triage tool**. Findings prioritise visible activity for
 
 | Investigate | Understand | Build |
 | --- | --- | --- |
-| [Inputs & EVTX conversion](docs/inputs.md) | [Detections & logging](docs/detections.md) | [Development](docs/development.md) |
-| [Multi-file collections](docs/collections.md) | [Rule coverage & data gaps](docs/coverage.md) | [Testing & CI](docs/testing.md) |
-| [Saved cases & reports](docs/cases.md) · [Exports](docs/reports.md) | [Rules & tuning profiles](docs/rules.md) | [Changelog](CHANGELOG.md) |
+| [Inputs & EVTX conversion](docs/inputs.md) | [Detections](docs/detections.md) · [ATT&CK](docs/attack.md) | [Development](docs/development.md) |
+| [Collections & fingerprints](docs/collections.md) | [Rule coverage & data gaps](docs/coverage.md) | [Testing & CI](docs/testing.md) |
+| [Saved cases](docs/cases.md) · [Reports & printing](docs/printing.md) | [Rules & tuning profiles](docs/rules.md) | [Changelog](CHANGELOG.md) |
 
 ---
 

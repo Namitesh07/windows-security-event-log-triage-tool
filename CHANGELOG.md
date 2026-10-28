@@ -1,6 +1,23 @@
 # Changelog
 
-## Unreleased — v1.6.0 / upgrades 21–22
+## Unreleased — v1.7.0 / upgrades 23–25
+
+### Added
+
+- SHA-256 fingerprints of original event-file bytes, including encoding markers and line endings, computed locally through Web Crypto. Source panels, JSON, saved cases, and CSV exports retain each file's digest and byte count.
+- Reopened-case hash provenance: recorded fingerprints are validated and retained without claiming the original bytes were reverified. Missing bytes/cryptography produce an explicit unavailable state.
+- Reviewed MITRE ATT&CK learning references in the versioned catalog, findings, coverage, and reports, with process-specific Mshta/Regsvr32 references and conservative notes where no technique is justified. Current Windows logging/firewall references use T1685.005, T1685.001, and T1686.003.
+- Self-contained printable HTML investigation reports with case/review notes, settings/profile, source hashes, findings, evidence references, timeline, coverage gaps, reference links, and limitations. Open the download and use the browser Print / Save as PDF command.
+- Tests for exact-byte hashing, saved-hash validation, reference selection, inert HTML rendering, print scope/paging/limits, and real browser flows.
+
+### Compatibility
+
+- Tool version is 1.7.0; catalog version is 2026-10-28. Report schema 1.2, saved-case envelope 1.1, and existing rule-profile schema remain unchanged. New metadata is additive; use the current analyser to preserve it when resaving old or new cases.
+- Detection conditions/default points, duplicate policy, event-import limits, and case limits are unchanged. ATT&CK context adds no score and is not a confirmed classification.
+- Printable reports show up to 500 findings, 2,000 event references/timeline entries, and 500 inactive annotations, with explicit notices when limits apply. Context fields over 4,000 characters are visibly shortened; case/finding notes retain their existing limits. Printable output over 20 MB is refused with guidance to narrow scope or use JSON.
+- Processing, hashing, and report preparation stay local. No external lookups, uploads, tracking, or automatic printing were added. MITRE pages open only when a reference is selected.
+
+## v1.6.0 / upgrades 21–22
 
 ### Added
 
