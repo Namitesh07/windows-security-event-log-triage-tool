@@ -1,3 +1,16 @@
+.source-fingerprint {
+  font-size:.82rem;
+  overflow-wrap:anywhere;
+}
+.source-fingerprint code {
+  color:var(--blue);
+  font-family:Consolas,monospace;
+  word-break:break-all;
+}
+.attack-context a {
+  color:var(--blue);
+  overflow-wrap:anywhere;
+}
 .collection-panel,.coverage-panel {
   margin:16px 0;
   min-width:0;

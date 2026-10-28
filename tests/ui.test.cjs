@@ -34,12 +34,12 @@ function app() {
   document.querySelectorAll=selector=>selector==='[data-sample]'?buttons:[];
   document.querySelector=selector=>selector==='.demo-details'?demo:null;
   document.createElement=()=>new Element();
-  const fakeWindow={confirm:()=>true,addEventListener:(type,handler)=>{windowEvents[type]=handler;}};
+  const fakeWindow={crypto:require('node:crypto').webcrypto,confirm:()=>true,addEventListener:(type,handler)=>{windowEvents[type]=handler;}};
   const testTimeout=(callback,delay)=>{const timer=setTimeout(callback,delay);if(delay>1000)timer.unref();return timer;};
   const context=vm.createContext({window:fakeWindow,document,console,Blob,TextDecoder,TextEncoder,setTimeout:testTimeout,clearTimeout,
     URL:{createObjectURL:blob=>{const url='blob:'+urls.size;urls.set(url,blob);return url;},revokeObjectURL:url=>urls.delete(url)},
     Event:class{constructor(type){this.type=type;}}});
-  for(const file of ['rules.generated.js','rule-profiles.js','analysis.js','inputs.js','collection.js','report.js','case-file.js','task-runner.js','script.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context);
+  for(const file of ['rules.generated.js','rule-profiles.js','analysis.js','inputs.js','collection.js','report.js','case-file.js','print-report.js','task-runner.js','script.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context);
   return {
     el:id=>elements.get(id), document, downloads, window:fakeWindow, windowEvents,
     load:async (text,name='case.csv')=>{elements.get('csv-file').files=[{name,size:Buffer.byteLength(text),text:async()=>text}];await elements.get('csv-file').trigger('change');await elements.get('analyze-button').trigger('click');},
@@ -290,6 +290,13 @@ test('rule coverage updates with profile changes while showing data gaps for rul
   ui.el('rule-profile-file').files=[{name:'profile.json',size:text.length,text:async()=>text}];await ui.el('rule-profile-file').trigger('change');
   await ui.el('export-json').trigger('click');const report=JSON.parse(await ui.downloads.at(-1).blob.text());
   assert.equal(report.ruleCoverage.find(item=>item.ruleId==='PS_ENCODED').state,'disabled');
+});
+test('printable download preserves export scope and unsaved notes until a full case is saved',async()=>{
+  const ui=app();assert.equal(ui.el('export-print').disabled,true);await ui.sample('mixed');
+  ui.el('case-notes').value='Keep these notes';await ui.el('case-notes').trigger('input');ui.el('export-scope').value='view';
+  await ui.el('export-print').trigger('click');const download=ui.downloads.at(-1),html=await download.blob.text();
+  assert.match(download.name,/-print\.html$/);assert.match(html,/Current evidence and filters/);assert.ok(html.includes('Keep these notes'));assert.match(ui.el('case-status').textContent,/Notes changed/);
+  assert.match(ui.el('export-status').textContent,/Print \/ Save as PDF/);assert.ok(ui.el('findings').innerHTML.includes('MITRE ATT&amp;CK learning references'));
 });
 
 
