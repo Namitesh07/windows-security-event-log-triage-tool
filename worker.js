@@ -1,7 +1,7 @@
 /* Local background work; the selected CSV never leaves the browser. */
 'use strict';
-const ASSET_VERSION = '1.6.0';
-importScripts(...['rules.generated.js', 'rule-profiles.js', 'analysis.js', 'inputs.js', 'collection.js', 'report.js', 'case-file.js'].map(file => file+'?v='+ASSET_VERSION));
+const ASSET_VERSION = '1.7.0';
+importScripts(...['rules.generated.js', 'rule-profiles.js', 'analysis.js', 'inputs.js', 'collection.js', 'report.js', 'case-file.js', 'print-report.js'].map(file => file+'?v='+ASSET_VERSION));
 self.onmessage = async ({ data }) => {
   const progress = message => self.postMessage({ type: 'progress', message });
   try {
@@ -31,7 +31,7 @@ self.onmessage = async ({ data }) => {
     } else if (data.operation === 'export') {
       progress('Preparing download…');
       const report = self.EventTriageReports.createReport(data.payload.input);
-      result = data.payload.format === 'json' ? JSON.stringify(report, null, 2) :
+      result = data.payload.format === 'print' ? self.EventTriagePrintable.renderReport(report) : data.payload.format === 'json' ? JSON.stringify(report, null, 2) :
         data.payload.format === 'findings' ? self.EventTriageReports.findingsCsv(report) : self.EventTriageReports.eventsCsv(report);
     } else throw new Error('Unknown background operation.');
     self.postMessage({ type: 'result', result });

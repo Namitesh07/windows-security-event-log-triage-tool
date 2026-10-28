@@ -9,7 +9,7 @@ const project = path.resolve(__dirname,'..');
 const bootstrap = `
   const {parentPort,workerData}=require('node:worker_threads');
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
-  const scope={TextDecoder,TextEncoder,postMessage:message=>parentPort.postMessage(message)};scope.self=scope;
+  const scope={TextDecoder,TextEncoder,crypto:require('node:crypto').webcrypto,postMessage:message=>parentPort.postMessage(message)};scope.self=scope;
   const context=vm.createContext(scope);
   scope.importScripts=(...files)=>files.forEach(file=>vm.runInContext(fs.readFileSync(path.join(workerData.project,file.split('?')[0]),'utf8'),context));
   scope.importScripts('worker.js');
@@ -26,7 +26,7 @@ class BrowserWorker {
 }
 function runner(worker=true) {
   const window={location:{protocol:'https:'},Worker:worker ? BrowserWorker : undefined,
-    EventTriageAnalysis:require('../analysis.js'),EventTriageInputs:require('../inputs.js'),EventTriageCollection:require('../collection.js'),EventTriageReports:require('../report.js'),EventTriageCases:require('../case-file.js')};
+    EventTriageAnalysis:require('../analysis.js'),EventTriageInputs:require('../inputs.js'),EventTriageCollection:require('../collection.js'),EventTriageReports:require('../report.js'),EventTriageCases:require('../case-file.js'),EventTriagePrintable:require('../print-report.js')};
   vm.runInNewContext(fs.readFileSync(path.join(project,'task-runner.js'),'utf8'),{window,setTimeout});
   return new window.EventTriageTasks.TaskRunner();
 }
@@ -102,4 +102,9 @@ for(const worker of [true,false])test((worker?'worker':'fallback')+' imports col
 });
 test('fallback collection checks use actual combined file sizes even without a caller byte hint',async()=>{
   const task=runner(false);await assert.rejects(task.run('parse-files',{files:[{name:'large.csv',bytes:2*1024*1024+1,text:'Event ID\n1102'}]}),/Background processing is unavailable/);
+});
+for(const worker of [true,false])test((worker?'worker':'fallback')+' exports printable HTML with current ATT&CK references',async()=>{
+  const task=runner(worker),parsed=await task.run('parse',{text:'Event ID,Message\n1102,Fictional log clear',bytes:50});
+  const input={...parsed,findings:require('../analysis').analyze(parsed.events),source:{name:'lab.csv'},scope:{mode:'all'},case:{notes:'Retain review note'}};
+  const html=await task.run('export',{input,format:'print',bytes:50});assert.ok(html.startsWith('<!doctype html>'));assert.ok(html.includes('T1685.005'));assert.ok(html.includes('Retain review note'));
 });
