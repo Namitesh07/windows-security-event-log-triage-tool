@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
   "id": "fieldnotes-windows-triage",
-  "version": "2026-10-22",
+  "version": "2026-10-28",
   "rules": [
     {
       "id": "AUTH_FAILURE_BURST",
@@ -18,7 +18,17 @@
         "Confirm the account owner and source device.",
         "Compare source IP, reporting host, logon type, and nearby endpoint activity.",
         "Check for stale service credentials and approved authentication tests."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1110.001",
+            "name": "Password Guessing"
+          }
+        ],
+        "note": "Repeated failures are compatible with guessing, but mistyped or stale credentials can look the same."
+      }
     },
     {
       "id": "AUTH_SUCCESS_AFTER_FAILURES",
@@ -39,7 +49,17 @@
         "Confirm the account owner and source device.",
         "Compare source IP, reporting host, logon type, and nearby endpoint activity.",
         "Check for stale service credentials and approved authentication tests."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1110.001",
+            "name": "Password Guessing"
+          }
+        ],
+        "note": "A matching success after failures warrants review; it does not establish that an attacker obtained credentials."
+      }
     },
     {
       "id": "AUTH_PASSWORD_SPRAY",
@@ -56,7 +76,17 @@
         "Confirm the account owner and source device.",
         "Compare source IP, reporting host, logon type, and nearby endpoint activity.",
         "Check for stale service credentials and approved authentication tests."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1110.003",
+            "name": "Password Spraying"
+          }
+        ],
+        "note": "Many targeted accounts are a spraying cue; exported logons do not reveal whether the same password was used."
+      }
     },
     {
       "id": "ACCOUNT_CREATED_GROUP",
@@ -81,7 +111,21 @@
         "Verify the target account and actor against an approved change.",
         "Confirm the group privileges and intended account lifetime.",
         "Review subsequent logons and endpoint activity for the account."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1136",
+            "name": "Create Account"
+          },
+          {
+            "id": "T1098.007",
+            "name": "Additional Local or Domain Groups"
+          }
+        ],
+        "note": "Related learning references only. Approved account, group, service, or task administration can produce the same events; validate ownership and change context."
+      }
     },
     {
       "id": "ACCOUNT_CREATED_PRIVILEGED_GROUP",
@@ -106,7 +150,21 @@
         "Verify the target account and actor against an approved change.",
         "Confirm the group privileges and intended account lifetime.",
         "Review subsequent logons and endpoint activity for the account."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1136",
+            "name": "Create Account"
+          },
+          {
+            "id": "T1098.007",
+            "name": "Additional Local or Domain Groups"
+          }
+        ],
+        "note": "Related learning references only. Approved account, group, service, or task administration can produce the same events; validate ownership and change context."
+      }
     },
     {
       "id": "ACCOUNT_CREATED",
@@ -123,7 +181,17 @@
         "Verify the target account and actor against an approved change.",
         "Confirm the group privileges and intended account lifetime.",
         "Review subsequent logons and endpoint activity for the account."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1136",
+            "name": "Create Account"
+          }
+        ],
+        "note": "Related learning references only. Approved account, group, service, or task administration can produce the same events; validate ownership and change context."
+      }
     },
     {
       "id": "ACCOUNT_DELETED",
@@ -140,7 +208,12 @@
         "Verify the target account and actor against an approved change.",
         "Confirm the group privileges and intended account lifetime.",
         "Review subsequent logons and endpoint activity for the account."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [],
+        "note": "Account deletion alone does not identify an adversarial technique; no specific reference is assigned."
+      }
     },
     {
       "id": "GROUP_ADDED",
@@ -157,7 +230,17 @@
         "Verify the target account and actor against an approved change.",
         "Confirm the group privileges and intended account lifetime.",
         "Review subsequent logons and endpoint activity for the account."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1098.007",
+            "name": "Additional Local or Domain Groups"
+          }
+        ],
+        "note": "Related learning references only. Approved account, group, service, or task administration can produce the same events; validate ownership and change context."
+      }
     },
     {
       "id": "PRIVILEGED_GROUP_ADDED",
@@ -174,7 +257,17 @@
         "Verify the target account and actor against an approved change.",
         "Confirm the group privileges and intended account lifetime.",
         "Review subsequent logons and endpoint activity for the account."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1098.007",
+            "name": "Additional Local or Domain Groups"
+          }
+        ],
+        "note": "Related learning references only. Approved account, group, service, or task administration can produce the same events; validate ownership and change context."
+      }
     },
     {
       "id": "AUDIT_LOG_CLEARED",
@@ -191,7 +284,17 @@
         "Identify the actor and maintenance record.",
         "Check forwarded logs and endpoint evidence around the clearing.",
         "Confirm logging continued afterward."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1685.005",
+            "name": "Clear Windows Event Logs"
+          }
+        ],
+        "note": "Log clearing also occurs during authorised maintenance; the event alone does not establish evasion."
+      }
     },
     {
       "id": "SERVICE_INSTALLED",
@@ -206,7 +309,17 @@
       "benign": "Software installers and updates commonly install services.",
       "next": [
         "Verify service name, image path, publisher, account, and approved change."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1543.003",
+            "name": "Windows Service"
+          }
+        ],
+        "note": "Related learning references only. Approved account, group, service, or task administration can produce the same events; validate ownership and change context."
+      }
     },
     {
       "id": "PS_ENCODED",
@@ -223,7 +336,17 @@
         "Review the full command or script and the parent process.",
         "Confirm the script author, source, and approved purpose.",
         "Gather endpoint evidence before deciding whether to escalate."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1059.001",
+            "name": "PowerShell"
+          }
+        ],
+        "note": "PowerShell and encoded content are also used by legitimate automation. This is a learning reference, not an obfuscation verdict."
+      }
     },
     {
       "id": "PS_DOWNLOAD_EXECUTE",
@@ -240,7 +363,21 @@
         "Review the full command or script and the parent process.",
         "Confirm the script author, source, and approved purpose.",
         "Gather endpoint evidence before deciding whether to escalate."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1059.001",
+            "name": "PowerShell"
+          },
+          {
+            "id": "T1105",
+            "name": "Ingress Tool Transfer"
+          }
+        ],
+        "note": "Download and evaluation expressions suggest content transfer/execution to review; neither expression proves malicious intent."
+      }
     },
     {
       "id": "OFFICE_SHELL_CHILD",
@@ -257,7 +394,17 @@
         "Review the full command or script and the parent process.",
         "Confirm the script author, source, and approved purpose.",
         "Gather endpoint evidence before deciding whether to escalate."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1059",
+            "name": "Command and Scripting Interpreter"
+          }
+        ],
+        "note": "The parent/child relationship provides interpreter context; it does not prove malicious document execution."
+      }
     },
     {
       "id": "SCRIPT_HOST_REMOTE",
@@ -274,7 +421,23 @@
         "Review the full command or script and the parent process.",
         "Confirm the script author, source, and approved purpose.",
         "Gather endpoint evidence before deciding whether to escalate."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1218.005",
+            "name": "Mshta",
+            "process": "mshta.exe"
+          },
+          {
+            "id": "T1218.010",
+            "name": "Regsvr32",
+            "process": "regsvr32.exe"
+          }
+        ],
+        "note": "Only the reference for the observed mshta/regsvr32 process is attached to a finding. A remote argument is not proof of proxy execution abuse."
+      }
     },
     {
       "id": "ACCOUNT_LOCKED",
@@ -291,7 +454,12 @@
         "Confirm the account owner and source device.",
         "Compare source IP, reporting host, logon type, and nearby endpoint activity.",
         "Check for stale service credentials and approved authentication tests."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [],
+        "note": "A lockout alone does not establish guessing or malicious activity; no specific reference is assigned."
+      }
     },
     {
       "id": "EXPLICIT_CREDENTIALS",
@@ -307,7 +475,12 @@
       "next": [
         "Verify the subject, credential account, target server, and process.",
         "Look for related successful or failed logons on the target."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [],
+        "note": "Event 4648 records an attempt, not proof of successful valid-account abuse; no specific reference is assigned."
+      }
     },
     {
       "id": "TASK_CREATED",
@@ -322,7 +495,17 @@
       "benign": "Installers and approved automation commonly create tasks.",
       "next": [
         "Review the task name, full task XML, run account, actions, triggers, and approved change."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1053.005",
+            "name": "Scheduled Task"
+          }
+        ],
+        "note": "Related learning references only. Approved account, group, service, or task administration can produce the same events; validate ownership and change context."
+      }
     },
     {
       "id": "TASK_UPDATED",
@@ -337,7 +520,17 @@
       "benign": "Approved automation and software maintenance can update tasks.",
       "next": [
         "Compare the task definition with the approved version and check its actor."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1053.005",
+            "name": "Scheduled Task"
+          }
+        ],
+        "note": "Related learning references only. Approved account, group, service, or task administration can produce the same events; validate ownership and change context."
+      }
     },
     {
       "id": "TASK_DELETED",
@@ -352,7 +545,12 @@
       "benign": "Cleanup and software removal can delete tasks.",
       "next": [
         "Verify the task name and deletion against approved maintenance."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [],
+        "note": "Task deletion alone does not establish adversarial cleanup; no specific reference is assigned."
+      }
     },
     {
       "id": "AUDIT_POLICY_CHANGED",
@@ -369,7 +567,17 @@
         "Review the subcategory and change values.",
         "Verify the actor and approved policy change.",
         "Check whether expected events continued to be collected."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1685.001",
+            "name": "Disable or Modify Windows Event Log"
+          }
+        ],
+        "note": "Inspect the change values first: a policy change can enable logging as well as reduce it."
+      }
     },
     {
       "id": "FIREWALL_RULE_CHANGED",
@@ -385,7 +593,17 @@
       "next": [
         "Review the rule name/ID and profile.",
         "Check the resulting firewall policy and approved change."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1686.003",
+            "name": "Windows Host Firewall"
+          }
+        ],
+        "note": "A changed firewall rule can be legitimate or defensive. Review the resulting policy before inferring impairment."
+      }
     },
     {
       "id": "FIREWALL_SETTING_CHANGED",
@@ -401,7 +619,17 @@
       "next": [
         "Review the setting type, value, and profile.",
         "Confirm the resulting firewall state and authorised change."
-      ]
+      ],
+      "attack": {
+        "reviewedAt": "2026-10-28",
+        "techniques": [
+          {
+            "id": "T1686.003",
+            "name": "Windows Host Firewall"
+          }
+        ],
+        "note": "A setting change does not necessarily weaken the firewall. Review the resulting state and approval."
+      }
     }
   ]
 }
