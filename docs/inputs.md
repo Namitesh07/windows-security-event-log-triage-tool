@@ -115,3 +115,7 @@ Microsoft references: [Windows Event schema](https://learn.microsoft.com/en-us/w
 Select or drop up to 20 supported event exports in one operation, in any mixture of supported formats. The limits are 25 MB combined in worker mode, 2 MB combined in fallback mode, and 100,000 source records including skipped Event IDs and duplicates. Decoded text is also bounded to 25 MB combined. Each file must contain at least one accepted event. A bad file rejects the whole selection and names the file; the previous case remains available. A new selection starts a replacement case rather than appending silently.
 
 Each file retains its own field layout, original record/line numbers, and diagnostics. Records get globally unique case-local UIDs and a source-file ID. Duplicate checking uses Windows record identity plus source-field equality across files; original records are never discarded. See [collections](collections.md).
+
+## Source-file SHA-256
+
+Event collections fingerprint original file bytes when available, independently of decoded text and normalized fields. Encoding markers, line endings, whitespace, and skipped input rows affect the digest. Hashes do not establish the source author or authenticity. See [fingerprints](fingerprints.md).
