@@ -2,7 +2,7 @@
 
 These rules are educational triage heuristics. Validate findings against account ownership, change records, source devices, and endpoint evidence. The tool does not know the local baseline or establish intent.
 
-The canonical [rule catalog](../rules/catalog.json) is version `2026-10-22`. The conditions and default points below are unchanged from v1.3.1. Optional [data-only profiles](rules.md) change enabled state and contribution points; exports include the exact applied profile and resolved weights. All supported [input formats](inputs.md) use this engine.
+The canonical [rule catalog](../rules/catalog.json) is version `2026-10-28`. The conditions and default points below are unchanged from v1.3.1. Optional [data-only profiles](rules.md) change enabled state and contribution points; exports include the exact applied profile and resolved weights. All supported [input formats](inputs.md) use this engine.
 
 ## Correlation settings and required context
 
@@ -103,3 +103,5 @@ These entries describe the expected Windows provider/channel. The application re
 ## Per-rule coverage
 
 Open **Per-rule coverage and data gaps** after analysis to inspect required fields, relevant/eligible counts, missing companion records, profile-disabled rules, and logging context for every catalog rule. This includes rules that emitted no findings. Confirmed cross-file duplicates are excluded from detections and coverage counts; their original evidence remains visible. See [coverage](coverage.md) and [collections](collections.md).
+
+The v1.7.0 catalog adds reviewed ATT&CK learning metadata, including explicit reasons for context-only rules with no assigned technique. This does not alter detection conditions or scores. See [ATT&CK references](attack.md).

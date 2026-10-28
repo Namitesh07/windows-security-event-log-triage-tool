@@ -59,3 +59,7 @@ Saved cases and reports are user-provided JSON, not signed evidence or proof of 
 Version 1.6.0 saves all original records, the source-file manifest, per-file diagnostics, and duplicate references in report schema 1.2 / envelope schema 1.1. Reopening validates each file and its field layout separately, reconstructs fields, and recalculates duplicate links, findings, and per-rule coverage. Saved duplicate flags, source display names, normalized summaries, and coverage states are not trusted. Older single-file v1.4/v1.5 reports and v1.5 envelope 1.0 cases remain readable. Source IDs and event UIDs are local references, not proof of authenticity. Older analyser versions cannot open the new schema.
 
 See [collections](collections.md) and [coverage](coverage.md).
+
+## Fingerprints and ATT&CK context in v1.7.0
+
+Source SHA-256 values are optional, validated metadata with algorithm, hex digest, byte length, original-file-byte basis, and verification state. Reopening retains them as recorded-in-case, because cases contain accepted event evidence rather than complete original file bytes. Older cases remain readable without hashes. Current ATT&CK learning references are recalculated with findings from the bundled catalog; saved reference URLs/classifications are not trusted. Report schema 1.2 and envelope 1.1 remain unchanged, with additive metadata. Older analyser versions may drop newer metadata when resaving; use the current version to preserve it. See [fingerprints](fingerprints.md), [ATT&CK](attack.md), and [printing](printing.md).
