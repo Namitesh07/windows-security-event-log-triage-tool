@@ -1,6 +1,6 @@
 # Versioned rules and optional tuning profiles
 
-The current catalog is **fieldnotes-windows-triage**, schema **1.0**, version **2026-10-22**, with **23 rules**. Default conditions and contribution points are unchanged from v1.3.1. See [detection conditions and logging requirements](detections.md) before interpreting a finding.
+The current catalog is **fieldnotes-windows-triage**, schema **1.0**, version **2026-10-28**, with **23 rules**. Default conditions and contribution points are unchanged from v1.3.1. See [detection conditions and logging requirements](detections.md) before interpreting a finding.
 
 ## Inspect the catalog
 
@@ -67,3 +67,5 @@ npm test
 Commit both the catalog and generated asset yourself. [rules.generated.js](../rules.generated.js) is a checked-in, deeply frozen browser/CommonJS asset generated without external dependencies. It keeps direct-file mode working without a JSON fetch. Do not hand-edit it: CI rejects stale generation and catalog/engine ID mismatches. Contributions are explicit labels/points, never executable text.
 
 Per-rule coverage reflects the profile actually applied to the report. Disabled rules are labelled Disabled, while enabled rules distinguish missing evidence/fields from assessed input. Changing a profile recalculates findings and coverage together. See [coverage](coverage.md).
+
+The v1.7.0 catalog adds reviewed ATT&CK learning metadata, including explicit reasons for context-only rules with no assigned technique. This does not alter detection conditions or scores. See [ATT&CK references](attack.md).
