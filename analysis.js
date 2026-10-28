@@ -429,7 +429,7 @@
     const scoreBreakdown = rule.breakdown.map(item => ({ ...item }));
     const score = scoreBreakdown.reduce((sum, item) => sum + item.points, 0);
     return { id: ruleId + '-' + evidence[0].uid + '-' + evidence.at(-1).uid, ruleId, title: rule.title,
-      events: evidence, score, scoreBreakdown, severity: severityForScore(score), why: rule.why, benign: rule.benign, next: rule.next,
+      events: evidence, score, scoreBreakdown, severity: severityForScore(score), why: rule.why, benign: rule.benign, next: rule.next, attack:profiles.attackReferences(ruleId,evidence),
       matchedFields: matchedFields.filter(item => clean(item.value)).map(item => ({ label: item.label, value: String(item.value) })) };
   }
   function groupsBy(events, keyFn) {
@@ -629,7 +629,7 @@
       }
       return {ruleId,title:rule.title,enabled:rule.enabled,state,relevantEvents:relevant.length,eligibleEvents,excludedEvents:relevant.length-eligibleEvents,
         findingCount,eventIds:ids,requirements,missingFields:[...missing.values()],missingEventTypes,explanation,warnings,
-        collectionHints:ids.map(id => ({eventId:id,...eventCatalog[id]})),
+        collectionHints:ids.map(id => ({eventId:id,...eventCatalog[id]})),attack:profiles.attackReferences(ruleId),
         settings:auth ? {failureThreshold:settings.failureThreshold,sprayAccountThreshold:settings.sprayAccountThreshold,authWindowMinutes:settings.authWindowMinutes} : accountSequence ? {accountWindowMinutes:settings.accountWindowMinutes} : {}};
     });
   }
