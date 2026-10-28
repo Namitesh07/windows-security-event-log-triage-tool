@@ -79,3 +79,9 @@ Primary references: [Playwright browser setup](https://playwright.dev/docs/brows
 - **28 actual browser tests passed** across desktop and mobile Chromium, using Chromium 153.0.8010.0 through the documented executable override. Browser-managed binaries were not available in this preparation environment.
 - The configured suite contains **42 tests** across Chromium desktop, Firefox desktop, and Chromium mobile. Firefox was not run locally for this ZIP.
 - The Windows converter and its integration test are unchanged from the main baseline that passed GitHub Windows validation. This uncommitted ZIP has not run CI; Windows and Firefox checks should run after you upload and commit it.
+
+## Remaining-upgrade validation (v1.7.0)
+
+The Node suite adds standard SHA-256 vectors, exact UTF-16/BOM/line-ending hashing, unavailable-hash behavior, saved-hash validation, current ATT&CK link/applicability tests, and printable HTML safety/scope/limit tests. Browser checks add original-byte fingerprint round trips, explicit recorded status, safe official reference links, and printable downloads across scopes/pages.
+
+The full browser configuration now has 54 cases across Chromium desktop, Firefox desktop, and Chromium mobile. Local validation used Chromium 153.0.8010.0 for 36 desktop/mobile cases; final GitHub CI verifies the standard browser projects and Windows fixture checks after the commits. Printable output is also rendered to A4 PDF and visually inspected during preparation.
