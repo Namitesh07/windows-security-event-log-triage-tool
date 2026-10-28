@@ -7,6 +7,14 @@
   const countKeys = ['rowsRead','rowsParsed','rowsSkipped','invalidTimestamps','ambiguousTimestamps','missingTimestamps'];
   const rowKeys = ['blankEventIdRows','invalidEventIdRows','invalidTimestampRows','ambiguousTimestampRows','missingTimestampRows'];
   const lower = value => String(value || '').trim().toLowerCase();
+  async function fingerprintBytes(bytes, subtle = root.crypto?.subtle) {
+    if (!subtle || typeof subtle.digest !== 'function') return null;
+    try {
+      const digest = await subtle.digest('SHA-256',bytes);
+      if (digest.byteLength !== 32) return null;
+      return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2,'0')).join('');
+    } catch { return null; }
+  }
 
   function validateFiles(files) {
     if (!Array.isArray(files) || !files.length || files.length > MAX_FILES) throw new Error('Choose between 1 and 20 event files.');
@@ -60,7 +68,18 @@
       const entry = files[index], name = entry.name || entry.file.name, format = inputs.formatForName(name);
       progress('Reading file '+(index+1)+' of '+files.length+': '+name);
       try {
-        const text = entry.file ? await inputs.readFileText(entry.file) : entry.text;
+        let text, fingerprint = null;
+        let fingerprintUnavailable = 'original-bytes-unavailable';
+        if (entry.file && typeof entry.file.arrayBuffer === 'function') {
+          const original = new Uint8Array(await entry.file.arrayBuffer());
+          if (!active()) throw Object.assign(new Error('Operation cancelled.'),{name:'AbortError'});
+          if (original.byteLength > MAX_BYTES || original.byteLength !== entry.file.size) throw new Error('Source file size changed or exceeds 25 MB.');
+          text = inputs.decodeFileBytes(original);
+          progress('Calculating source SHA-256: '+name);
+          const hex = await fingerprintBytes(original);
+          if (hex) { fingerprint = {algorithm:'SHA-256',hex,byteLength:original.byteLength,basis:'original-file-bytes',verification:'computed-at-import'}; fingerprintUnavailable = null; }
+          else fingerprintUnavailable = 'web-crypto-unavailable';
+        } else text = entry.file ? await inputs.readFileText(entry.file) : entry.text;
         if (!active()) throw Object.assign(new Error('Operation cancelled.'),{name:'AbortError'});
         if (typeof text !== 'string') throw new Error('Event input must be text.');
         decodedBytes += new TextEncoder().encode(text).length;
@@ -71,7 +90,7 @@
         const id = 'source-'+(index+1);
         const sizeBytes = entry.file?.size ?? entry.bytes ?? new TextEncoder().encode(text).length;
         const modified = entry.lastModified ?? (entry.file?.lastModified ? new Date(entry.file.lastModified).toISOString() : null);
-        sources.push({id,name,format,sizeBytes,lastModified:modified,loadedAt:new Date().toISOString()});
+        sources.push({id,name,format,sizeBytes,lastModified:modified,loadedAt:new Date().toISOString(),fingerprint,fingerprintUnavailable});
         perFile.push({sourceId:id,...parsed.diagnostics});
         for (const event of parsed.events) {
           event.index = events.length+1; event.uid = 'event-'+event.index;
@@ -87,7 +106,7 @@
     return { events,diagnostics,format,source:{name:sources.length === 1 ? sources[0].name : sources.length+' event exports',format,
       kind:'event collection',sizeBytes:bytes,lastModified:sources.length === 1 ? sources[0].lastModified : null,loadedAt:new Date().toISOString(),files:sources} };
   }
-  const api = Object.freeze({MAX_FILES,MAX_BYTES,validateFiles,recordIdentity,markDuplicates,parseFiles});
+  const api = Object.freeze({MAX_FILES,MAX_BYTES,validateFiles,recordIdentity,markDuplicates,fingerprintBytes,parseFiles});
   if (common) module.exports = api;
   if (root) root.EventTriageCollection = api;
 })(typeof window !== 'undefined' ? window : globalThis);

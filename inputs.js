@@ -16,7 +16,9 @@
   }
   async function readFileText(file) {
     if (typeof file.arrayBuffer !== 'function') return file.text();
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    return decodeFileBytes(new Uint8Array(await file.arrayBuffer()));
+  }
+  function decodeFileBytes(bytes) {
     if (bytes[0] === 0x45 && bytes[1] === 0x6c && bytes[2] === 0x66 && bytes[3] === 0x46) throw new Error('This is binary EVTX, not a text export. Convert it locally before importing.');
     const encoding = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : 'utf-8';
     try { return new TextDecoder(encoding,{fatal:true}).decode(bytes); }
@@ -217,7 +219,7 @@
     result.format=format;result.diagnostics.format=format;
     return result;
   }
-  const api=Object.freeze({EXTENSIONS,MAX_RECORDS,formatForName,readFileText,parseJsonDocument,parseInput});
+  const api=Object.freeze({EXTENSIONS,MAX_RECORDS,formatForName,readFileText,decodeFileBytes,parseJsonDocument,parseInput});
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   if(root)root.EventTriageInputs=api;
 })(typeof window!=='undefined'?window:globalThis);
