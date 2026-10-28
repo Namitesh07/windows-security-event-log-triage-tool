@@ -26,7 +26,7 @@ The app marks a record as a confirmed overlap only when it appears in a differen
 
 An overlapping occurrence refers to the first retained event through **duplicateOf**. The duplicate remains visible and exportable but is excluded from rules, correlations, coverage counts, snapshots, and unique Event ID metrics. Occurrence multiplicity within each file is preserved; repeated entries in one file are not silently collapsed.
 
-Records with missing identity, different timestamps, changed content, or differently shaped exports remain included. There is no fuzzy matching, account/message-only merging, authenticity check, or source-file fingerprinting. Unconfirmed overlaps can still affect thresholds; review collection boundaries and the original evidence. Mixing timestamp bases does not bypass existing correlation restrictions.
+Records with missing identity, different timestamps, changed content, or differently shaped exports remain included. There is no fuzzy matching, account/message-only merging, or authenticity check. Unconfirmed overlaps can still affect thresholds; review collection boundaries and the original evidence. Mixing timestamp bases does not bypass existing correlation restrictions.
 
 ## Try the overlapping practice exports
 
@@ -40,3 +40,7 @@ Select [overlap-first.csv](../samples/collections/overlap-first.csv) and [overla
 ## Save and export
 
 Full JSON reports and saved cases preserve every accepted original, file metadata, source diagnostics, notes, settings, and profiles. Reopening recalculates duplicate links, findings, and [per-rule coverage](coverage.md) from validated fields. Events CSV includes file references and duplicate flags; findings CSV includes canonical evidence locations. Source and event IDs are local references, not integrity proofs. See [reports](reports.md) and [cases](cases.md).
+
+## Original source fingerprints
+
+When original file bytes and Web Crypto are available, imports compute SHA-256 before discarding the temporary byte buffer. The source panel and reports keep the digest and original byte length. Hashing does not replace or broaden record-level duplicate matching. Reopened cases mark saved hashes as recorded metadata, not newly verified bytes. See [fingerprints](fingerprints.md).
