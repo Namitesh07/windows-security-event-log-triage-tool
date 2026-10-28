@@ -42,6 +42,14 @@
       sizeBytes:integer(value.sizeBytes ?? 0,0,Number.MAX_SAFE_INTEGER,'source byte size'), lastModified:null };
     if (value.lastModified !== null && value.lastModified !== undefined) result.lastModified = iso(value.lastModified,'source modification time');
     if (value.loadedAt) result.loadedAt = iso(value.loadedAt,'source load time');
+    if (value.fingerprint != null) {
+      const fingerprint = value.fingerprint;
+      if (!plain(fingerprint) || fingerprint.algorithm !== 'SHA-256' || typeof fingerprint.hex !== 'string' || !/^[a-f0-9]{64}$/.test(fingerprint.hex) ||
+          fingerprint.byteLength !== result.sizeBytes || fingerprint.basis !== 'original-file-bytes' ||
+          !['computed-at-import','recorded-in-case'].includes(fingerprint.verification) ||
+          Object.keys(fingerprint).some(key => !['algorithm','hex','byteLength','basis','verification'].includes(key))) fail('Invalid source SHA-256 fingerprint.');
+      result.fingerprint = {...fingerprint,verification:'recorded-in-case'};
+    } else { result.fingerprint = null; result.fingerprintUnavailable = 'original-bytes-unavailable'; }
     return result;
   }
   function normalizeEvidence(saved, sourceValue, schema) {
@@ -176,6 +184,7 @@
     }
     Object.assign(restoredDiagnostics,{duplicateEvents:normalized.duplicateEvents,uniqueEvents:normalized.uniqueEvents,uncomparableEvents:normalized.uncomparableEvents});
     notices.push('Duplicate links and per-rule coverage were recalculated; every original record is retained.');
+    if (normalized.files.some(file => file.fingerprint)) notices.push('Source SHA-256 values were retained as recorded metadata. Original file bytes are not embedded, so reopening does not verify those fingerprints.');
     return { events:normalized.events,findings,source:{...source(report.source,normalized.format),files:normalized.files},case:caseContext(report.case),settings:effectiveSettings,ruleProfile,
       ruleCoverage:analysis.ruleCoverage(normalized.events,assessed,ruleProfile,effectiveSettings),annotations:restoredAnnotations,diagnostics:restoredDiagnostics,origin,notices,format:normalized.format };
   }
