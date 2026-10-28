@@ -6,7 +6,14 @@ function generatedRules(){
   const ids=new Set();
   for(const rule of catalog.rules){
     if(!/^[A-Z][A-Z0-9_]+$/.test(rule.id)||ids.has(rule.id))throw new Error('Invalid or duplicate rule ID.');ids.add(rule.id);
-    if(Object.keys(rule).some(key=>!['id','title','breakdown','why','benign','next'].includes(key)))throw new Error('Unexpected catalog field in '+rule.id);
+    if(Object.keys(rule).some(key=>!['id','title','breakdown','why','benign','next','attack'].includes(key)))throw new Error('Unexpected catalog field in '+rule.id);
+    const attack=rule.attack;
+    if(!attack||Object.keys(attack).some(key=>!['reviewedAt','techniques','note'].includes(key))||!/^\d{4}-\d{2}-\d{2}$/.test(attack.reviewedAt)||typeof attack.note!=='string'||!attack.note.trim()||!Array.isArray(attack.techniques)||attack.techniques.length>4)throw new Error('Invalid ATT&CK context in '+rule.id);
+    const techniques=new Set();
+    for(const reference of attack.techniques){
+      if(!/^T\d{4}(?:\.\d{3})?$/.test(reference.id)||techniques.has(reference.id)||typeof reference.name!=='string'||!reference.name.trim()||Object.keys(reference).some(key=>!['id','name','process'].includes(key))||reference.process&&!['mshta.exe','regsvr32.exe'].includes(reference.process))throw new Error('Invalid ATT&CK reference in '+rule.id);
+      techniques.add(reference.id);
+    }
     for(const field of ['title','why','benign'])if(typeof rule[field]!=='string'||!rule[field].trim())throw new Error('Missing '+field+' in '+rule.id);
     if(!Array.isArray(rule.next)||!rule.next.length||rule.next.some(item=>typeof item!=='string'||!item.trim()))throw new Error('Invalid investigation steps in '+rule.id);
     if(!Array.isArray(rule.breakdown)||!rule.breakdown.length||rule.breakdown.some(part=>typeof part.label!=='string'||!part.label.trim()||!Number.isInteger(part.points)||part.points<0||part.points>100||Object.keys(part).some(key=>!['label','points'].includes(key))))throw new Error('Invalid contributions in '+rule.id);

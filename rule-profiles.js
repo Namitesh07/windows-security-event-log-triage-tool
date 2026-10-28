@@ -29,7 +29,13 @@
     return Object.freeze(Object.fromEntries(catalog.rules.map(rule=>{const setting=normalized.rules[rule.id];return [rule.id,Object.freeze({...rule,enabled:setting?.enabled!==false,
       breakdown:Object.freeze(rule.breakdown.map((item,index)=>Object.freeze({...item,points:setting?.points?.[index]??item.points})))})];})));
   }
-  const api=Object.freeze({catalog,defaultProfile,normalizeProfile,effectiveRules});
+  function attackReferences(ruleId,events){
+    const context=definitions[ruleId]?.attack;
+    const processes=events&&new Set(events.map(event=>String(event.process||'').toLowerCase().split(/[\\/]/).at(-1)));
+    return {reviewedAt:context?.reviewedAt||catalog.version,note:context?.note||'No specific ATT&CK learning reference is assigned.',
+      techniques:(context?.techniques||[]).filter(reference=>!processes||!reference.process||processes.has(reference.process)).map(({id,name})=>({id,name,url:'https://attack.mitre.org/techniques/'+id.replace('.','/')+'/'}))};
+  }
+  const api=Object.freeze({catalog,defaultProfile,normalizeProfile,effectiveRules,attackReferences});
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   if(root)root.EventTriageProfiles=api;
 })(typeof window!=='undefined'?window:globalThis);
