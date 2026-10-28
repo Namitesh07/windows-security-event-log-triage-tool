@@ -5,16 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#08070e">
   <title>Windows Security Event Log Triage Tool</title>
-  <link rel="stylesheet" href="styles.css?v=20261025-collections">
-  <script src="rules.generated.js?v=1.6.0" defer></script>
-  <script src="rule-profiles.js?v=1.6.0" defer></script>
-  <script src="analysis.js?v=1.6.0" defer></script>
-  <script src="inputs.js?v=1.6.0" defer></script>
-  <script src="collection.js?v=1.6.0" defer></script>
-  <script src="report.js?v=1.6.0" defer></script>
-  <script src="case-file.js?v=1.6.0" defer></script>
-  <script src="task-runner.js?v=1.6.0" defer></script>
-  <script src="script.js?v=1.6.0" defer></script>
+  <link rel="stylesheet" href="styles.css?v=20261028-reports">
+  <script src="rules.generated.js?v=1.7.0" defer></script>
+  <script src="rule-profiles.js?v=1.7.0" defer></script>
+  <script src="analysis.js?v=1.7.0" defer></script>
+  <script src="inputs.js?v=1.7.0" defer></script>
+  <script src="collection.js?v=1.7.0" defer></script>
+  <script src="report.js?v=1.7.0" defer></script>
+  <script src="case-file.js?v=1.7.0" defer></script>
+  <script src="print-report.js?v=1.7.0" defer></script>
+  <script src="task-runner.js?v=1.7.0" defer></script>
+  <script src="script.js?v=1.7.0" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -125,8 +126,10 @@
           <button class="button button-secondary" id="export-json" type="button" aria-describedby="export-help">Download JSON report</button>
           <button class="button button-secondary" id="export-findings" type="button">Download findings CSV</button>
           <button class="button button-secondary" id="export-events" type="button">Download events CSV</button>
+          <button class="button button-secondary" id="export-print" type="button">Download printable report</button>
         </div>
         <p class="muted small" id="export-status" role="status"></p>
+        <p class="muted small">Printable reports are standalone HTML: open the download and use Print / Save as PDF. They include review context and source references; use JSON for complete original fields. Any print limits are stated in the report.</p>
       </div>
       <div class="report-columns">
         <div class="panel"><div class="panel-heading"><div><p class="eyebrow">INVESTIGATE</p><h3>Findings</h3></div><span id="finding-count" class="count-pill">0</span></div><label class="sort-label" for="finding-sort">Sort findings<select id="finding-sort"><option value="priority">Highest priority</option><option value="newest">Newest activity</option><option value="oldest">Oldest activity</option><option value="title">Title</option></select></label><div id="findings" class="finding-list"></div><div class="table-pager"><button class="button button-quiet" id="findings-prev" type="button">Previous findings</button><span id="findings-page" role="status"></span><button class="button button-quiet" id="findings-next" type="button">Next findings</button></div></div>

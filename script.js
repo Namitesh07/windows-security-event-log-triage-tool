@@ -51,7 +51,7 @@
   const els = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
   els['processing-bar'] = document.getElementById('processing-bar'); els['task-label'] = document.getElementById('task-label');
   for(const id of ['rule-profile-file','reset-rule-profile','download-rule-profile','rule-profile-status','rule-catalog'])els[id]=document.getElementById(id);
-  for(const id of ['reopen-case-file','reopen-status','save-case'])els[id]=document.getElementById(id);
+  for(const id of ['reopen-case-file','reopen-status','save-case','export-print'])els[id]=document.getElementById(id);
   for(const id of ['filter-source','filter-duplicates','source-summary','source-list','rule-coverage-summary','rule-coverage-list'])els[id]=document.getElementById(id);
   const settingIds = { failureThreshold: 'failure-threshold', authWindowMinutes: 'auth-window', sprayAccountThreshold: 'spray-threshold', accountWindowMinutes: 'account-window' };
   const filterIds = ['event-search','filter-id','filter-severity','filter-ip','filter-type','filter-source','filter-duplicates'];
@@ -93,7 +93,7 @@
     els['task-progress'].hidden = !value; els['cancel-task'].hidden = !value;
     els.report.setAttribute('aria-busy', String(value)); els['drop-zone'].setAttribute('aria-busy', String(value));
     els['analyze-button'].disabled = value || !currentEvents.length;
-    for (const id of [...Object.values(settingIds),'reset-settings','rule-profile-file','reset-rule-profile','download-rule-profile','reopen-case-file','save-case','export-json','export-findings','export-events'])
+    for (const id of [...Object.values(settingIds),'reset-settings','rule-profile-file','reset-rule-profile','download-rule-profile','reopen-case-file','save-case','export-json','export-findings','export-events','export-print'])
       els[id].disabled = value || ((id.startsWith('export-') || id === 'save-case') && !analyzedAt);
   }
   function invalidateView() { viewCache = null; }
@@ -262,7 +262,10 @@
       const events = currentEvents.filter(event => event.sourceId === file.id || !event.sourceId && files.length === 1);
       const diagnostic = diagnostics.files?.find(item => item.sourceId === file.id);
       return '<li><strong>'+escapeHtml(file.name)+'</strong> <span class="muted">['+escapeHtml(file.id)+'] · '+escapeHtml(file.format?.toUpperCase())+' · '+events.length+' records · '+events.filter(event => event.duplicateOf).length+' duplicates'+
-        (diagnostic ? ' · '+diagnostic.rowsSkipped+' skipped unreadable IDs' : '')+'</span></li>';
+        (diagnostic ? ' · '+diagnostic.rowsSkipped+' skipped unreadable IDs' : '')+'</span><p class="source-fingerprint">'+
+        (file.fingerprint ? 'SHA-256 <code>'+escapeHtml(file.fingerprint.hex)+'</code><br><span class="muted small">'+
+          (file.fingerprint.verification === 'computed-at-import' ? 'Computed from original file bytes on import.' : 'Recorded in saved case; original bytes were not reverified.')+'</span>' :
+          '<span class="muted small">SHA-256 unavailable. Original bytes or the browser cryptography service are unavailable; built-in demos have no original file.</span>')+'</p></li>';
     }).join('');
   }
   function renderCoverage() {
@@ -275,7 +278,13 @@
       (item.missingFields.length ? '<ul>'+item.missingFields.map(gap => '<li>'+escapeHtml(gap.field)+': '+gap.events+' record(s); examples '+gap.exampleEventUids.map(escapeHtml).join(', ')+'.</li>').join('')+'</ul>' : '')+
       (item.missingEventTypes.length ? '<p>Missing companion events: '+item.missingEventTypes.map(escapeHtml).join('; ')+'.</p>' : '')+
       item.warnings.map(warning => '<p class="muted small">'+escapeHtml(warning)+'</p>').join('')+
-      '<details><summary>Collection and logging context</summary><ul>'+item.collectionHints.map(hint => '<li>'+escapeHtml(hint.eventId+' · '+hint.channel+' · '+hint.audit)+'</li>').join('')+'</ul></details></details>').join('');
+      '<details><summary>Collection and logging context</summary><ul>'+item.collectionHints.map(hint => '<li>'+escapeHtml(hint.eventId+' · '+hint.channel+' · '+hint.audit)+'</li>').join('')+'</ul></details>'+attackHtml(item.attack)+'</details>').join('');
+  }
+  function attackHtml(attack) {
+    if (!attack) return '';
+    return '<details class="attack-context"><summary>MITRE ATT&amp;CK learning references</summary><p class="muted small">Related context only; these are not confirmed techniques and do not add priority points.</p><ul>'+
+      attack.techniques.map(reference => '<li><a href="'+escapeHtml(reference.url)+'" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">'+escapeHtml(reference.id+' · '+reference.name)+'</a></li>').join('')+
+      '</ul><p>'+escapeHtml(attack.note)+'</p><p class="muted small">References reviewed '+escapeHtml(attack.reviewedAt)+'. Links open MITRE only when selected.</p></details>';
   }
   function pager(prefix, pageIndex, size, total) {
     const last = Math.max(0, Math.ceil(total / size) - 1);
@@ -302,7 +311,7 @@
       '</ul><p>Priority points are assigned per rule. Overlapping findings share evidence and are not added into a dataset risk score.</p></details>' +
       '<details><summary>Benign explanations and investigation steps</summary><p>' + escapeHtml(finding.benign) + '</p><ol>' +
       finding.next.map(step => '<li>' + escapeHtml(step) + '</li>').join('') + '</ol></details>' +
-      '<details class="review-notes"' + (review.note || review.status !== 'Unreviewed' ? ' open' : '') + '><summary>Analyst review · ' + escapeHtml(review.status) + '</summary>' +
+      attackHtml(finding.attack)+'<details class="review-notes"' + (review.note || review.status !== 'Unreviewed' ? ' open' : '') + '><summary>Analyst review · ' + escapeHtml(review.status) + '</summary>' +
       '<label for="status-' + finding.id + '">Review status<select id="status-' + finding.id + '" data-review-status="' + finding.id + '">' +
       reports.statuses.map(status => '<option' + (review.status === status ? ' selected' : '') + '>' + status + '</option>').join('') + '</select></label>' +
       '<label for="note-' + finding.id + '">Finding note<textarea id="note-' + finding.id + '" data-review-note="' + finding.id + '" rows="3" maxlength="4000">' +
@@ -447,15 +456,15 @@
     try {
       const content = await runner.run(isCase ? 'save-case' : 'export',{input,format,bytes:datasetBytes},message => { if (token === taskToken) setStatus(message); });
       if (token !== taskToken) return;
-      const isJson = format === 'json' || isCase, blob = new Blob([content],{type:isJson ? 'application/json;charset=utf-8' : 'text/csv;charset=utf-8'});
+      const isJson = format === 'json' || isCase, isPrint = format === 'print', blob = new Blob([content],{type:isPrint ? 'text/html;charset=utf-8' : isJson ? 'application/json;charset=utf-8' : 'text/csv;charset=utf-8'});
       const url = URL.createObjectURL(blob), link = document.createElement('a');
-      link.href = url; link.download = reports.filename(caseContext.title || source.name,isCase ? 'case' : isJson ? 'report' : format,isJson ? 'json' : 'csv');
+      link.href = url; link.download = reports.filename(caseContext.title || source.name,isCase ? 'case' : isJson ? 'report' : format,isPrint ? 'html' : isJson ? 'json' : 'csv');
       document.body.appendChild(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url),30000);
       const contents = isJson ? events.length + ' events and ' + findings.length + ' complete findings' : format === 'findings' ? findings.length + ' complete findings' : events.length + ' events';
-      els['export-status'].textContent = 'Download prepared: ' + contents + ' in ' +
+      els['export-status'].textContent = isPrint ? 'Printable HTML prepared for '+(mode === 'all' ? 'the entire dataset' : 'the current evidence and filters')+'. Open the downloaded file and use Print / Save as PDF. Any print limits are stated in the report; JSON retains complete raw evidence.' : 'Download prepared: ' + contents + ' in ' +
         (mode === 'all' ? 'the entire dataset.' : 'the current evidence and filters.') + ' Check your browser downloads.';
-      setStatus(isCase ? 'Saved-case download prepared. Reopen the JSON above to continue later.' : 'Report download prepared.');
+      setStatus(isPrint ? 'Printable report download prepared. Open it and use your browser Print command.' : isCase ? 'Saved-case download prepared. Reopen the JSON above to continue later.' : 'Report download prepared.');
       // A full JSON snapshot includes even annotations outside the current rules/settings.
       if (isJson && mode === 'all' && exportedRevision === noteRevision) { dirtyNotes = false; updateCaseStatus(); }
     } catch (error) {
@@ -537,7 +546,7 @@
   for (const [key,id] of Object.entries(caseIds)) els[id].addEventListener('input',() => {
     caseContext = reports.normalizeCase({...caseContext,[key]:els[id].value}); dirtyNotes = true; noteRevision += 1; updateCaseStatus();
   });
-  for (const format of ['json','findings','events']) els['export-' + format].addEventListener('click',() => exportReport(format));
+  for (const format of ['json','findings','events','print']) els['export-' + format].addEventListener('click',() => exportReport(format));
   window.addEventListener('beforeunload',event => { if (dirtyNotes) { event.preventDefault(); event.returnValue = ''; } });
   const zone = els['drop-zone'];
   for (const type of ['dragenter','dragover']) zone.addEventListener(type,event => { event.preventDefault(); zone.classList.add('dragover'); });
