@@ -55,7 +55,7 @@
               if (payload.includeCoverage) result = {findings:result,ruleCoverage:root.EventTriageAnalysis.ruleCoverage(payload.events,findings,payload.ruleProfile,payload.settings)};
             } else if (operation === 'export') {
               const report = root.EventTriageReports.createReport(payload.input);
-              result = payload.format === 'json' ? JSON.stringify(report, null, 2) : payload.format === 'findings' ?
+              result = payload.format === 'print' ? root.EventTriagePrintable.renderReport(report) : payload.format === 'json' ? JSON.stringify(report, null, 2) : payload.format === 'findings' ?
                 root.EventTriageReports.findingsCsv(report) : root.EventTriageReports.eventsCsv(report);
             } else throw new Error('Unknown local operation.');
             finish(null, result);
